@@ -3,6 +3,7 @@ package engx
 import (
 	"encoding/json"
 	"net/http"
+	"sync"
 )
 
 type Context struct {
@@ -12,6 +13,8 @@ type Context struct {
 	Method     string
 	Params     map[string]string
 	StatusCode int
+	store      Map
+	lock       sync.RWMutex
 }
 
 func NewContext(w http.ResponseWriter, r *http.Request) *Context {
@@ -23,17 +26,17 @@ func NewContext(w http.ResponseWriter, r *http.Request) *Context {
 	}
 }
 
+// 依赖 Go 1.22+ 的 r.PathValue
+func (c *Context) Param(key string) string {
+	return c.Request.PathValue(key)
+}
+
 func (c *Context) QueryParams(key string) string {
 	return c.Request.URL.Query().Get(key)
 }
 
 func (c *Context) FormParams(key string) string {
 	return c.Request.FormValue(key)
-}
-
-func (c *Context) Param(key string) string {
-	value, _ := c.Params[key]
-	return value
 }
 
 func (c *Context) SetStatus(statusCode int) {
@@ -63,4 +66,21 @@ func (c *Context) HTML(status int, html string) error {
 	c.SetStatus(status)
 	_, err := c.Writer.Write([]byte(html))
 	return err
+}
+
+func (c *Context) Set(key string, val any) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	if c.store == nil {
+		c.store = make(Map)
+	}
+
+	c.store[key] = val
+}
+
+func (c *Context) Get(key string) any {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.store[key]
 }

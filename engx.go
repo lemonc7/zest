@@ -1,10 +1,13 @@
 package engx
 
-import "net/http"
+import (
+	"net/http"
+)
 
 type Engx struct {
-	router     *Router
-	ErrHandler ErrHandlerFunc
+	mux         *http.ServeMux
+	ErrHandler  ErrHandlerFunc
+	middlewares []MiddlewareFunc
 }
 
 type Map map[string]any
@@ -40,44 +43,62 @@ const (
 )
 
 func New() *Engx {
-	e := &Engx{
+	return &Engx{
 		ErrHandler: DefaultErrHandlerFunc,
-		router:     NewRouter(),
+		mux:        http.NewServeMux(),
 	}
-	return e
 }
 
-func (e *Engx) addRoute(method string, pattern string, handler HandlerFunc) {
-	e.router.addRoute(method, pattern, handler)
+func (e *Engx) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	e.mux.ServeHTTP(w, r)
 }
 
-func (e *Engx) GET(pattern string, handler HandlerFunc) {
-	e.addRoute(http.MethodGet, pattern, handler)
+func (e *Engx) handle(method string, pattern string, handler HandlerFunc, mws ...MiddlewareFunc) {
+	route := method + " " + pattern
+
+	// 合并全局和局部路由中间件
+	finalMws := append(e.middlewares, mws...)
+	finalHandler := use(handler, finalMws...)
+
+	e.mux.HandleFunc(route, func(w http.ResponseWriter, r *http.Request) {
+		c := NewContext(w, r)
+		if err := finalHandler(c); err != nil {
+			e.ErrHandler(err, c)
+		}
+	})
 }
 
-func (e *Engx) POST(pattern string, handler HandlerFunc) {
-	e.addRoute(http.MethodPost, pattern, handler)
+func (e *Engx) GET(pattern string, handler HandlerFunc, mws ...MiddlewareFunc) {
+	e.handle(http.MethodGet, pattern, handler, mws...)
 }
 
-func (e *Engx) PUT(pattern string, handler HandlerFunc) {
-	e.addRoute(http.MethodPut, pattern, handler)
+func (e *Engx) POST(pattern string, handler HandlerFunc, mws ...MiddlewareFunc) {
+	e.handle(http.MethodPost, pattern, handler, mws...)
 }
 
-func (e *Engx) PATCH(pattern string, handler HandlerFunc) {
-	e.addRoute(http.MethodPatch, pattern, handler)
+func (e *Engx) PUT(pattern string, handler HandlerFunc, mws ...MiddlewareFunc) {
+	e.handle(http.MethodPut, pattern, handler, mws...)
 }
 
-func (e *Engx) DELETE(pattern string, handler HandlerFunc) {
-	e.addRoute(http.MethodDelete, pattern, handler)
+func (e *Engx) PATCH(pattern string, handler HandlerFunc, mws ...MiddlewareFunc) {
+	e.handle(http.MethodPatch, pattern, handler, mws...)
+}
+
+func (e *Engx) DELETE(pattern string, handler HandlerFunc, mws ...MiddlewareFunc) {
+	e.handle(http.MethodDelete, pattern, handler, mws...)
 }
 
 func (e *Engx) Run(addr string) error {
 	return http.ListenAndServe(addr, e)
 }
 
-func (e *Engx) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	c := NewContext(w, r)
-	if err := e.router.handle(c); err != nil {
-		e.ErrHandler(err, c)
+func (e *Engx) Use(mws ...MiddlewareFunc) {
+	e.middlewares = append(e.middlewares, mws...)
+}
+
+func use(handler HandlerFunc, mws ...MiddlewareFunc) HandlerFunc {
+	for i := len(mws) - 1; i >= 0; i-- {
+		handler = mws[i](handler)
 	}
+	return handler
 }
