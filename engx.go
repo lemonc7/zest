@@ -12,12 +12,6 @@ type Engx struct {
 
 type Map map[string]any
 
-type HTTPError struct {
-	StatusCode int
-	Msg        string
-	Internal   error
-}
-
 type HandlerFunc func(c *Context) error
 
 type MiddlewareFunc func(next HandlerFunc) HandlerFunc
@@ -94,6 +88,15 @@ func (e *Engx) Run(addr string) error {
 
 func (e *Engx) Use(mws ...MiddlewareFunc) {
 	e.middlewares = append(e.middlewares, mws...)
+}
+
+// Group 创建路由分组
+func (e *Engx) Group(prefix string, mws ...MiddlewareFunc) *Group {
+	return &Group{
+		prefix:      prefix,
+		middlewares: mws,
+		engx:        e,
+	}
 }
 
 func use(handler HandlerFunc, mws ...MiddlewareFunc) HandlerFunc {

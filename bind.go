@@ -1,27 +1,17 @@
 package engx
 
 import (
-	"regexp"
+	"github.com/Oudwins/zog"
+	"github.com/Oudwins/zog/parsers/zjson"
+	"github.com/Oudwins/zog/zhttp"
 )
 
-// func BindPathParams(r *http.Request, dst any) error {
-// 	names := getPathParamsNames(r.Pattern)
+// BindBody 使用 zog schema 解析 JSON 请求体
+func (c *Context) BindBody(schema *zog.StructSchema, dstPtr any) zog.ZogIssueList {
+	return schema.Parse(zjson.Decode(c.Request.Body), dstPtr)
+}
 
-// 	params := map[string][]string{}
-// 	for _, name := range names {
-// 		value := r.PathValue(name)
-// 		params[name] = []string{value}
-// 	}
-
-// }
-
-func getPathParamsNames(pattern string) []string {
-	// 匹配{param}
-	re := regexp.MustCompile(`\{([a-zA-Z0-9_]+)\}`)
-	matches := re.FindAllStringSubmatch(pattern, -1)
-	var params []string
-	for _, match := range matches {
-		params = append(params, match[1])
-	}
-	return params
+// BindQuery 使用 zog schema 解析 Query 参数
+func (c *Context) BindQuery(schema *zog.StructSchema, dstPtr any) zog.ZogIssueList {
+	return schema.Parse(zhttp.Request(c.Request), dstPtr)
 }

@@ -11,7 +11,6 @@ type Context struct {
 	Request    *http.Request
 	Path       string
 	Method     string
-	Params     map[string]string
 	StatusCode int
 	store      Map
 	lock       sync.RWMutex
@@ -31,15 +30,19 @@ func (c *Context) Param(key string) string {
 	return c.Request.PathValue(key)
 }
 
-func (c *Context) QueryParams(key string) string {
+func (c *Context) Query(key string) string {
 	return c.Request.URL.Query().Get(key)
 }
 
-func (c *Context) FormParams(key string) string {
+func (c *Context) Form(key string) string {
 	return c.Request.FormValue(key)
 }
 
 func (c *Context) SetStatus(statusCode int) {
+	// 已经设置过，不重复设置
+	if c.StatusCode != 0 {
+		return
+	}
 	c.StatusCode = statusCode
 	c.Writer.WriteHeader(statusCode)
 }

@@ -5,7 +5,11 @@ import (
 	"net/http"
 )
 
-
+type HTTPError struct {
+	StatusCode int
+	Msg        any
+	Internal   error
+}
 
 func DefaultErrHandlerFunc(err error, c *Context) {
 	if he, ok := err.(*HTTPError); ok {
@@ -15,8 +19,7 @@ func DefaultErrHandlerFunc(err error, c *Context) {
 	c.JSON(http.StatusInternalServerError, Map{"error": err.Error()})
 }
 
-
-func NewHTTPError(statusCode int, msg string) *HTTPError {
+func NewHTTPError(statusCode int, msg any) *HTTPError {
 	return &HTTPError{
 		StatusCode: statusCode,
 		Msg:        msg,
@@ -25,9 +28,9 @@ func NewHTTPError(statusCode int, msg string) *HTTPError {
 
 func (e *HTTPError) Error() string {
 	if e.Internal == nil {
-		return fmt.Sprintf("code=%d, message=%s", e.StatusCode, e.Msg)
+		return fmt.Sprintf("code=%d, message=%v", e.StatusCode, e.Msg)
 	}
-	return fmt.Sprintf("code=%d, message=%s, error=%v", e.StatusCode, e.Msg, e.Internal)
+	return fmt.Sprintf("code=%d, message=%v, error=%v", e.StatusCode, e.Msg, e.Internal)
 }
 
 func (e *HTTPError) SetInternal(err error) *HTTPError {
