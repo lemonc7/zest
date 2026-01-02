@@ -2,6 +2,7 @@ package engx
 
 import (
 	"net/http"
+	"strings"
 )
 
 type Engx struct {
@@ -97,6 +98,35 @@ func (e *Engx) Group(prefix string, mws ...MiddlewareFunc) *Group {
 		middlewares: mws,
 		engx:        e,
 	}
+}
+
+// Static 静态文件服务
+func (e *Engx) Static(prefix, root string) {
+	if prefix == "" {
+		prefix = "/"
+	}
+	if root == "" {
+		root = "."
+	}
+	// 确保 prefix 以 / 开头
+	if !strings.HasPrefix(prefix, "/") {
+		prefix = "/" + prefix
+	}
+	// 确保 prefix 以 / 结尾（为了 StripPrefix 正确工作）
+	if !strings.HasSuffix(prefix, "/") {
+		prefix += "/"
+	}
+
+	fileServer := http.FileServer(http.Dir(root))
+	handler := http.StripPrefix(prefix, fileServer)
+
+	// 注册路由，注意使用 {$} 之前的通配符匹配逻辑
+	// 这里我们需要匹配 prefix/* 的所有请求
+	// 在 Go 1.22 的 mux 中，注册 "/static/" 会匹配 "/static/*"
+	e.handle(http.MethodGet, prefix, func(c *Context) error {
+		handler.ServeHTTP(c.Writer, c.Request)
+		return nil
+	})
 }
 
 func use(handler HandlerFunc, mws ...MiddlewareFunc) HandlerFunc {
