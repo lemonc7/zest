@@ -12,6 +12,9 @@ type HTTPError struct {
 }
 
 func DefaultErrHandlerFunc(err error, c *Context) {
+	if c.WroteHeader() {
+		return
+	}
 	if he, ok := err.(*HTTPError); ok {
 		c.JSON(he.StatusCode, Map{"error": he.Msg})
 		return

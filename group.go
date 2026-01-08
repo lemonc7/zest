@@ -1,6 +1,9 @@
 package engx
 
-import "net/http"
+import (
+	"net/http"
+	"strings"
+)
 
 // Group 路由分组
 type Group struct {
@@ -10,13 +13,25 @@ type Group struct {
 }
 
 func (g *Group) handle(method string, pattern string, handler HandlerFunc, mws ...MiddlewareFunc) {
-	// 拼接路由前缀
-	fullPattern := g.prefix + pattern
+	// 拼接路由前缀，确保路径规范化
+	fullPattern := joinPath(g.prefix, pattern)
 
 	// 合并分组中间件和路由中间件
 	finalMws := append(g.middlewares, mws...)
 
 	g.engx.handle(method, fullPattern, handler, finalMws...)
+}
+
+func joinPath(prefix, pattern string) string {
+	if prefix == "" {
+		return pattern
+	}
+	if pattern == "" {
+		return prefix
+	}
+	// 手动拼接，避免 url.JoinPath 转义 {} 等特殊字符
+	final := strings.TrimRight(prefix, "/") + "/" + strings.TrimLeft(pattern, "/")
+	return final
 }
 
 // Group 创建嵌套分组
@@ -52,4 +67,15 @@ func (g *Group) PATCH(pattern string, handler HandlerFunc, mws ...MiddlewareFunc
 
 func (g *Group) DELETE(pattern string, handler HandlerFunc, mws ...MiddlewareFunc) {
 	g.handle(http.MethodDelete, pattern, handler, mws...)
+}
+
+// Static 在分组内提供静态文件服务
+func (g *Group) Static(prefix, root string) {
+	// 拼接分组前缀
+	fullPrefix := joinPath(g.prefix, prefix)
+	g.engx.Static(fullPrefix, root)
+}
+
+func (g *Group) OPTIONS(pattern string, handler HandlerFunc, mws ...MiddlewareFunc) {
+	g.handle(http.MethodOptions, pattern, handler, mws...)
 }

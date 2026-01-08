@@ -1,9 +1,13 @@
 package middleware
 
 import (
+	"errors"
+	"fmt"
+	"html/template"
 	"net/http"
+	"net/url"
 	"os"
-	"path/filepath"
+	"path"
 
 	"github.com/lemonc7/engx"
 )
@@ -22,109 +26,162 @@ type StaticConfig struct {
 	// Browse 是否允许目录浏览
 	// 可选，默认值 false
 	Browse bool
-	// IgnoreBase （当 HTML5 为 true 时）忽略请求 URL 中的基础路径
-	// 使得嵌套路径也能返回 index.html
-	// 可选，默认值 false
-	IgnoreBase bool
+	// Filesystem 提供对静态内容的访问
+	// 可选，默认为 http.Dir(config.Root)
+	Filesystem http.FileSystem
 }
 
-// DefaultStaticConfig 默认静态文件配置
-var DefaultStaticConfig = StaticConfig{
-	Root:  ".",
-	Index: "index.html",
-}
+const dirListHtml = `
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ .Name }}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 40px; background: #f9f9fb; color: #333; }
+    header { font-size: 28px; font-weight: 600; margin-bottom: 30px; color: #1a1a1a; }
+    ul { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; }
+    li { background: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: transform 0.2s, box-shadow 0.2s; }
+    li:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    li a { display: block; padding: 15px; text-decoration: none; color: #3b82f6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dir { color: #ec4899; font-weight: 500; }
+    .file { color: #6366f1; }
+    .size { font-size: 12px; color: #94a3b8; margin-left: 8px; }
+  </style>
+</head>
+<body>
+  <header>目录: {{ .Name }}</header>
+  <ul>
+    {{ range .Files }}
+    <li>
+      {{ if .IsDir }}
+        <a class="dir" href="{{ .Name }}/">{{ .Name }}/</a>
+      {{ else }}
+        <a class="file" href="{{ .Name }}">{{ .Name }}</a>
+        <span class="size">{{ .Size }}</span>
+      {{ end }}
+    </li>
+    {{ end }}
+  </ul>
+</body>
+</html>
+`
 
-// Static 返回一个静态文件中间件，从指定的根目录提供静态内容
-func Static(root string) engx.MiddlewareFunc {
-	c := DefaultStaticConfig
-	c.Root = root
-	return StaticWithConfig(c)
-}
-
-// StaticWithConfig 返回一个带配置的静态文件中间件
-func StaticWithConfig(config StaticConfig) engx.MiddlewareFunc {
-	// 设置默认值
+// Static 返回一个带配置的静态文件中间件
+func Static(config StaticConfig) engx.MiddlewareFunc {
+	// 默认配置初始化
 	if config.Root == "" {
 		config.Root = "."
 	}
 	if config.Index == "" {
 		config.Index = "index.html"
 	}
+	if config.Filesystem == nil {
+		config.Filesystem = http.Dir(config.Root)
+		config.Root = "."
+	}
 
-	// 返回中间件函数
+	// 预加载模板
+	t, tErr := template.New("dirlist").Parse(dirListHtml)
+	if tErr != nil {
+		panic(fmt.Errorf("engx: static middleware template error: %w", tErr))
+	}
+
 	return func(next engx.HandlerFunc) engx.HandlerFunc {
 		return func(c *engx.Context) error {
-			// ============ 步骤 1: 过滤非静态请求 ============
-			// 只处理 GET 和 HEAD 请求，其他方法（POST/PUT/DELETE）直接跳过
 			if c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead {
 				return next(c)
 			}
 
-			// ============ 步骤 2: 构建文件路径 ============
-			// 获取请求的 URL 路径，例如 "/css/style.css"
-			path := c.Request.URL.Path
-
-			// 安全地拼接文件路径，防止路径遍历攻击（如 "/../../../etc/passwd"）
-			// filepath.Clean 会清理路径中的 .. 和 .
-			// filepath.Join 会安全地拼接路径
-			// 例如：config.Root = "./dist", path = "/css/style.css"
-			// 结果：file = "./dist/css/style.css"
-			file := filepath.Join(config.Root, filepath.Clean("/"+path))
-
-			// ============ 步骤 3: 检查文件是否存在 ============
-			info, err := os.Stat(file)
+			// 获取并解码 URL 路径
+			reqPath := c.Request.URL.Path
+			p, err := url.PathUnescape(reqPath)
 			if err != nil {
-				// 3.1 文件不存在的情况
-				if os.IsNotExist(err) {
-					// ========== SPA 模式处理 ==========
-					// 如果开启了 HTML5 模式（用于 Vue/React 单页应用）
-					// 找不到文件时，返回 index.html，让前端路由接管
-					if config.HTML5 {
-						file = filepath.Join(config.Root, config.Index)
-						// 再次检查 index.html 是否存在
-						if info, err = os.Stat(file); err == nil {
-							http.ServeFile(c.Writer, c.Request, file)
-							return nil
-						}
+				return next(c)
+			}
+
+			// 使用 path.Clean 确保 URL 路径安全
+			name := path.Join(config.Root, path.Clean("/"+p))
+
+			file, err := config.Filesystem.Open(name)
+			if err != nil {
+				// 文件不存在，交给后续路由处理（可能是 API 路由）
+				if err := next(c); err == nil {
+					return nil
+				}
+
+				// 如果后续路由也处理失败（返回了 404），且开启了 HTML5 模式，则尝试返回 index.html
+				// 这对于 SPA (单页应用) 前端路由非常重要
+				var he *engx.HTTPError
+				if config.HTML5 && (os.IsNotExist(err) || (errors.As(err, &he) && he.StatusCode == http.StatusNotFound)) {
+					file, err = config.Filesystem.Open(path.Join(config.Root, config.Index))
+					if err != nil {
+						// index.html 也不存在，那只能返回最初的 404 错误了
+						return next(c)
 					}
-					// 文件不存在且非 HTML5 模式，继续执行下一个 Handler
-					// 可能会被其他路由处理，或最终返回 404
+				} else {
 					return next(c)
 				}
+			}
+			defer file.Close()
 
-				// 3.2 其他错误（如权限错误）
-				// 为了稳健性，继续执行下一个 Handler
+			info, err := file.Stat()
+			if err != nil {
 				return next(c)
 			}
 
-			// ============ 步骤 4: 处理目录请求 ============
 			if info.IsDir() {
-				// 4.1 尝试查找目录下的 index 文件（如 index.html）
-				indexFile := filepath.Join(file, config.Index)
-				if _, err := os.Stat(indexFile); err == nil {
-					// 找到了 index 文件，直接返回
-					http.ServeFile(c.Writer, c.Request, indexFile)
-					return nil
+				// 尝试目录下的 index.html
+				indexName := path.Join(name, config.Index)
+				indexFile, err := config.Filesystem.Open(indexName)
+				if err == nil {
+					defer indexFile.Close()
+					if indexInfo, err := indexFile.Stat(); err == nil {
+						http.ServeContent(c.ResponseWriter(), c.Request, indexInfo.Name(), indexInfo.ModTime(), indexFile)
+						return nil
+					}
 				}
 
-				// 4.2 如果开启了目录浏览（Browse），列出目录内容
+				// 开启目录浏览
 				if config.Browse {
-					fs := http.FileServer(http.Dir(config.Root))
-					fs.ServeHTTP(c.Writer, c.Request)
-					return nil
+					return listDir(t, name, file, c)
 				}
-
-				// 4.3 目录且无 index 且未开启浏览 -> 继续下一个 handler
 				return next(c)
 			}
 
-			// ============ 步骤 5: 返回普通文件 ============
-			// http.ServeFile 会：
-			// 1. 自动检测 Content-Type（如 image/png, text/css）
-			// 2. 处理缓存（Last-Modified, If-Modified-Since）
-			// 3. 支持 Range 请求（视频播放、断点续传）
-			http.ServeFile(c.Writer, c.Request, file)
+			http.ServeContent(c.ResponseWriter(), c.Request, info.Name(), info.ModTime(), file)
 			return nil
 		}
 	}
+}
+
+func listDir(t *template.Template, name string, dir http.File, c *engx.Context) error {
+	files, err := dir.Readdir(-1)
+	if err != nil {
+		return err
+	}
+
+	c.SetHeader(engx.HeaderContentType, engx.MIMETextHTMLCharsetUTF8)
+	c.SetStatus(http.StatusOK)
+
+	data := struct {
+		Name  string
+		Files []any
+	}{
+		Name: name,
+	}
+
+	for _, f := range files {
+		data.Files = append(data.Files, struct {
+			Name  string
+			IsDir bool
+			Size  string
+		}{
+			Name:  f.Name(),
+			IsDir: f.IsDir(),
+			Size:  formatSize(f.Size()),
+		})
+	}
+	return t.Execute(c.Response(), data)
 }

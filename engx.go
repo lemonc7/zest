@@ -1,14 +1,17 @@
 package engx
 
 import (
+	"log"
 	"net/http"
 	"strings"
+	"sync"
 )
 
 type Engx struct {
 	mux         *http.ServeMux
 	ErrHandler  ErrHandlerFunc
 	middlewares []MiddlewareFunc
+	pool        sync.Pool
 }
 
 type Map map[string]any
@@ -30,18 +33,36 @@ const (
 
 // MIME type
 const (
-	MIMEApplicationJSON      = "application/json"
-	MIMETextPlain            = "text/plain"
-	MIMETextHTML             = "text/html"
-	MIMETextPlainCharsetUTF8 = MIMETextPlain + "; " + charsetUTF8
-	MIMETextHTMLCharsetUTF8  = MIMETextHTML + "; " + charsetUTF8
+	MIMEApplicationJSON           = "application/json"
+	MIMEApplicationXML            = "application/xml"
+	MIMETextPlain                 = "text/plain"
+	MIMETextHTML                  = "text/html"
+	MIMEApplicationXMLCharsetUTF8 = MIMEApplicationXML + "; " + charsetUTF8
+	MIMETextPlainCharsetUTF8      = MIMETextPlain + "; " + charsetUTF8
+	MIMETextHTMLCharsetUTF8       = MIMETextHTML + "; " + charsetUTF8
 )
 
 func New() *Engx {
-	return &Engx{
+	e := &Engx{
 		ErrHandler: DefaultErrHandlerFunc,
 		mux:        http.NewServeMux(),
 	}
+	e.pool.New = func() any {
+		return NewContext(nil, nil)
+	}
+
+	// 注册全局 404 处理，利用 Go 1.22 的特性
+	// 注册一个不带方法的模式会作为最后的兜底
+	e.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		c := e.pool.Get().(*Context)
+		c.reset(w, r)
+		defer e.pool.Put(c)
+
+		// 通过全局错误处理器返回标准 404
+		e.ErrHandler(NewHTTPError(http.StatusNotFound, "Not Found"), c)
+	})
+
+	return e
 }
 
 func (e *Engx) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +77,10 @@ func (e *Engx) handle(method string, pattern string, handler HandlerFunc, mws ..
 	finalHandler := use(handler, finalMws...)
 
 	e.mux.HandleFunc(route, func(w http.ResponseWriter, r *http.Request) {
-		c := NewContext(w, r)
+		c := e.pool.Get().(*Context)
+		c.reset(w, r)
+		defer e.pool.Put(c)
+
 		if err := finalHandler(c); err != nil {
 			e.ErrHandler(err, c)
 		}
@@ -83,7 +107,12 @@ func (e *Engx) DELETE(pattern string, handler HandlerFunc, mws ...MiddlewareFunc
 	e.handle(http.MethodDelete, pattern, handler, mws...)
 }
 
+func (e *Engx) OPTIONS(pattern string, handler HandlerFunc, mws ...MiddlewareFunc) {
+	e.handle(http.MethodOptions, pattern, handler, mws...)
+}
+
 func (e *Engx) Run(addr string) error {
+	log.Printf("🚀 Engx server listening on %s\n", addr)
 	return http.ListenAndServe(addr, e)
 }
 
@@ -101,18 +130,16 @@ func (e *Engx) Group(prefix string, mws ...MiddlewareFunc) *Group {
 }
 
 // Static 静态文件服务
+// 建议直接使用 middleware.Static 中间件获得更多配置项
 func (e *Engx) Static(prefix, root string) {
 	if prefix == "" {
 		prefix = "/"
-	}
-	if root == "" {
-		root = "."
 	}
 	// 确保 prefix 以 / 开头
 	if !strings.HasPrefix(prefix, "/") {
 		prefix = "/" + prefix
 	}
-	// 确保 prefix 以 / 结尾（为了 StripPrefix 正确工作）
+	// 确保 prefix 以 / 结尾
 	if !strings.HasSuffix(prefix, "/") {
 		prefix += "/"
 	}
@@ -120,11 +147,8 @@ func (e *Engx) Static(prefix, root string) {
 	fileServer := http.FileServer(http.Dir(root))
 	handler := http.StripPrefix(prefix, fileServer)
 
-	// 注册路由，注意使用 {$} 之前的通配符匹配逻辑
-	// 这里我们需要匹配 prefix/* 的所有请求
-	// 在 Go 1.22 的 mux 中，注册 "/static/" 会匹配 "/static/*"
-	e.handle(http.MethodGet, prefix, func(c *Context) error {
-		handler.ServeHTTP(c.Writer, c.Request)
+	e.GET(prefix+"{path...}", func(c *Context) error {
+		handler.ServeHTTP(c.ResponseWriter(), c.Request)
 		return nil
 	})
 }

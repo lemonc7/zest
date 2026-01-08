@@ -1,7 +1,9 @@
 package middleware
 
 import (
-	"log"
+	"fmt"
+	"io"
+	"os"
 	"time"
 
 	"github.com/lemonc7/engx"
@@ -9,12 +11,15 @@ import (
 
 // LoggerConfig 日志中间件配置
 type LoggerConfig struct {
+	// Skip 判断是否跳过日志记录的函数
+	// 返回 true 则不记录
+	Skip func(c *engx.Context) bool
 	// Formatter 自定义日志格式化函数
 	// 接收 LogParam 参数，返回格式化后的字符串
 	Formatter func(param LogParam) string
-	// Output 自定义日志输出函数
-	// 接收格式化后的日志字符串，可以输出到文件、数据库等
-	Output func(string)
+	// Output 日志输出目标
+	// 默认为 os.Stdout
+	Output io.Writer
 }
 
 // LogParam 日志参数，包含请求的所有关键信息
@@ -22,6 +27,8 @@ type LogParam struct {
 	TimeStamp  time.Time     // 请求完成时间
 	StatusCode int           // HTTP 状态码
 	Latency    time.Duration // 请求耗时
+	Size       int64         // 响应大小（字节）
+	RequestID  string        // 请求唯一 ID
 	ClientIP   string        // 客户端 IP
 	Method     string        // HTTP 方法（GET/POST/etc）
 	Path       string        // 请求路径（包含 query 参数）
@@ -31,93 +38,181 @@ type LogParam struct {
 // DefaultLoggerConfig 默认日志配置
 var DefaultLoggerConfig = LoggerConfig{
 	Formatter: defaultLogFormatter,
-	Output:    func(s string) { log.Print(s) },
+	Output:    os.Stdout,
 }
+
+const (
+	cyan    = "\033[96m"
+	green   = "\033[92m"
+	yellow  = "\033[93m"
+	red     = "\033[91m"
+	blue    = "\033[94m"
+	magenta = "\033[95m"
+	reset   = "\033[0m"
+)
 
 // defaultLogFormatter 默认的日志格式化函数
-// 输出格式：🟢 2024/01/01 - 12:00:00 | GET /api/users | 5.2ms | 127.0.0.1
 func defaultLogFormatter(param LogParam) string {
-	return getStatusEmoji(param.StatusCode) + " " +
-		param.TimeStamp.Format("2006/01/02 - 15:04:05") + " | " +
-		param.Method + " " +
-		param.Path + " | " +
-		param.Latency.String() + " | " +
-		param.ClientIP
+	statusColor := getStatusColor(param.StatusCode)
+	methodColor := getMethodColor(param.Method)
+
+	// 格式化 RequestID，如果为空则显示 -
+	rid := param.RequestID
+	if rid == "" {
+		rid = "-"
+	} else {
+		// 截取前 8 位显示，避免太长
+		if len(rid) > 8 {
+			rid = rid[:8]
+		}
+	}
+
+	// 基础日志信息
+	logStr := fmt.Sprintf("[%s] %s %s %s | %s%s%s %-7s | %13s | %8s | %s",
+		rid,
+		getStatusEmoji(param.StatusCode),
+		param.TimeStamp.Format("2006/01/02 - 15:04:05"),
+		statusColor+fmt.Sprintf("%3d", param.StatusCode)+reset,
+		methodColor, param.Method, reset,
+		param.Path,
+		param.Latency.String(),
+		formatSize(param.Size),
+		param.ClientIP,
+	)
+
+	// 如果有错误，追加错误信息
+	if param.Error != nil {
+		logStr += fmt.Sprintf(" | %sError: %s%s", red, param.Error.Error(), reset)
+	}
+
+	return logStr + "\n"
 }
 
-// getStatusEmoji 根据状态码返回对应的 Emoji
-// 2xx 成功 -> 🟢  3xx 重定向 -> 🟡  4xx 客户端错误 -> 🟠  5xx 服务器错误 -> 🔴
-func getStatusEmoji(code int) string {
-	switch {
-	case code >= 200 && code < 300:
-		return "🟢" // 成功
-	case code >= 300 && code < 400:
-		return "🟡" // 重定向
-	case code >= 400 && code < 500:
-		return "🟠" // 客户端错误（如 404, 403）
-	default:
-		return "🔴" // 服务器错误（如 500）
+func formatSize(s int64) string {
+	units := []string{"B", "KB", "MB", "GB", "TB", "PB"}
+	size := float64(s)
+	i := 0
+	for size >= 1024 && i < len(units)-1 {
+		size /= 1024
+		i++
 	}
+	return fmt.Sprintf("%.1f %s", size, units[i])
 }
+
+// ... (getStatusColor, getMethodColor, getStatusEmoji functions remain unchanged) ...
 
 // Logger 返回一个日志中间件，记录所有 HTTP 请求
 func Logger(config ...LoggerConfig) engx.MiddlewareFunc {
-	// 使用默认配置
+	// ... (Config logic remains unchanged) ...
 	cfg := DefaultLoggerConfig
 
 	// 如果用户提供了自定义配置，使用用户配置
 	if len(config) > 0 {
-		cfg = config[0]
-		// 如果用户没有提供 Formatter，使用默认格式化函数
-		if cfg.Formatter == nil {
-			cfg.Formatter = defaultLogFormatter
+		userCfg := config[0]
+		if userCfg.Skip != nil {
+			cfg.Skip = userCfg.Skip
 		}
-		// 如果用户没有提供 Output，使用默认输出（标准输出）
-		if cfg.Output == nil {
-			cfg.Output = func(s string) { log.Print(s) }
+		if userCfg.Formatter != nil {
+			cfg.Formatter = userCfg.Formatter
+		}
+		if userCfg.Output != nil {
+			cfg.Output = userCfg.Output
 		}
 	}
 
 	// 返回实际的中间件函数
 	return func(next engx.HandlerFunc) engx.HandlerFunc {
 		return func(c *engx.Context) error {
+			if cfg.Skip != nil && cfg.Skip(c) {
+				return next(c)
+			}
+
 			// ============ 步骤 1: 记录开始时间 ============
 			start := time.Now()
 
 			// ============ 步骤 2: 保存原始路径和查询参数 ============
-			// path: /api/users
 			path := c.Request.URL.Path
-			// raw: page=1&size=10
 			raw := c.Request.URL.RawQuery
 
 			// ============ 步骤 3: 执行实际的 Handler ============
-			// 这里会调用路由处理函数，以及后续的中间件
 			err := next(c)
 
 			// ============ 步骤 4: 拼接完整路径（包含查询参数）============
-			// 如果有查询参数，拼接成 /api/users?page=1&size=10
 			if raw != "" {
 				path = path + "?" + raw
 			}
 
 			// ============ 步骤 5: 收集日志参数 ============
+			// 尝试获取 RequestID
+			var rid string
+			if v := c.Get("requestID"); v != nil {
+				if id, ok := v.(string); ok {
+					rid = id
+				}
+			}
+
 			param := LogParam{
-				TimeStamp:  time.Now(),        // 请求完成时间
-				StatusCode: c.StatusCode,      // HTTP 状态码（如 200, 404, 500）
-				Latency:    time.Since(start), // 计算请求耗时
-				ClientIP:   c.ClientIP(),      // 获取客户端真实 IP
-				Method:     c.Method,          // HTTP 方法
-				Path:       path,              // 完整路径（含查询参数）
-				Error:      err,               // Handler 返回的错误（如果有）
+				TimeStamp:  time.Now(),
+				StatusCode: c.Response().Status,
+				Latency:    time.Since(start),
+				Size:       c.Response().Size,
+				RequestID:  rid,
+				ClientIP:   c.ClientIP(),
+				Method:     c.Method,
+				Path:       path,
+				Error:      err,
 			}
 
 			// ============ 步骤 6: 格式化并输出日志 ============
-			logStr := cfg.Formatter(param) // 调用格式化函数
-			cfg.Output(logStr)             // 调用输出函数
+			logStr := cfg.Formatter(param)
+			fmt.Fprint(cfg.Output, logStr)
 
 			// ============ 步骤 7: 返回原始错误 ============
-			// 重要！必须返回 err，让错误继续向上传递
 			return err
 		}
+	}
+}
+
+func getStatusColor(code int) string {
+	switch {
+	case code >= 200 && code < 300:
+		return green
+	case code >= 300 && code < 400:
+		return yellow
+	default:
+		return red
+	}
+}
+
+func getMethodColor(method string) string {
+	switch method {
+	case "GET":
+		return cyan
+	case "POST":
+		return green
+	case "PUT":
+		return yellow
+	case "DELETE":
+		return red
+	case "PATCH":
+		return magenta
+	case "HEAD":
+		return blue
+	default:
+		return reset
+	}
+}
+
+// getStatusEmoji 根据状态码返回对应的 Emoji
+func getStatusEmoji(code int) string {
+	switch {
+	case code >= 200 && code < 300:
+		return "🟢"
+	case code >= 300 && code < 400:
+		return "🟡"
+	case code >= 400 && code < 500:
+		return "🟠"
+	default:
+		return "🔴"
 	}
 }
