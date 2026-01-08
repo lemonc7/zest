@@ -9,7 +9,7 @@ import (
 	"os"
 	"path"
 
-	"github.com/lemonc7/engx"
+	"github.com/lemonc7/zest"
 )
 
 // StaticConfig 静态文件中间件配置
@@ -69,7 +69,7 @@ const dirListHtml = `
 `
 
 // Static 返回一个带配置的静态文件中间件
-func Static(config StaticConfig) engx.MiddlewareFunc {
+func Static(config StaticConfig) zest.MiddlewareFunc {
 	// 默认配置初始化
 	if config.Root == "" {
 		config.Root = "."
@@ -85,11 +85,11 @@ func Static(config StaticConfig) engx.MiddlewareFunc {
 	// 预加载模板
 	t, tErr := template.New("dirlist").Parse(dirListHtml)
 	if tErr != nil {
-		panic(fmt.Errorf("engx: static middleware template error: %w", tErr))
+		panic(fmt.Errorf("zest: static middleware template error: %w", tErr))
 	}
 
-	return func(next engx.HandlerFunc) engx.HandlerFunc {
-		return func(c *engx.Context) error {
+	return func(next zest.HandlerFunc) zest.HandlerFunc {
+		return func(c *zest.Context) error {
 			if c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead {
 				return next(c)
 			}
@@ -113,7 +113,7 @@ func Static(config StaticConfig) engx.MiddlewareFunc {
 
 				// 如果后续路由也处理失败（返回了 404），且开启了 HTML5 模式，则尝试返回 index.html
 				// 这对于 SPA (单页应用) 前端路由非常重要
-				var he *engx.HTTPError
+				var he *zest.HTTPError
 				if config.HTML5 && (os.IsNotExist(err) || (errors.As(err, &he) && he.StatusCode == http.StatusNotFound)) {
 					file, err = config.Filesystem.Open(path.Join(config.Root, config.Index))
 					if err != nil {
@@ -156,13 +156,13 @@ func Static(config StaticConfig) engx.MiddlewareFunc {
 	}
 }
 
-func listDir(t *template.Template, name string, dir http.File, c *engx.Context) error {
+func listDir(t *template.Template, name string, dir http.File, c *zest.Context) error {
 	files, err := dir.Readdir(-1)
 	if err != nil {
 		return err
 	}
 
-	c.SetHeader(engx.HeaderContentType, engx.MIMETextHTMLCharsetUTF8)
+	c.SetHeader(zest.HeaderContentType, zest.MIMETextHTMLCharsetUTF8)
 	c.SetStatus(http.StatusOK)
 
 	data := struct {

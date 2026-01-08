@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/lemonc7/engx"
+	"github.com/lemonc7/zest"
 )
 
 // RecoveryConfig Recovery 中间件配置
@@ -28,7 +28,7 @@ var DefaultRecoveryConfig = RecoveryConfig{
 
 // Recovery 返回一个中间件，用于捕获 panic 并恢复，防止服务器崩溃
 // 如果发生 panic，会记录堆栈信息，并返回 500 错误以便后续中间件（如 Logger）和全局错误处理器处理
-func Recovery(config ...RecoveryConfig) engx.MiddlewareFunc {
+func Recovery(config ...RecoveryConfig) zest.MiddlewareFunc {
 	cfg := DefaultRecoveryConfig
 	if len(config) > 0 {
 		userCfg := config[0]
@@ -40,8 +40,8 @@ func Recovery(config ...RecoveryConfig) engx.MiddlewareFunc {
 		}
 	}
 
-	return func(next engx.HandlerFunc) engx.HandlerFunc {
-		return func(c *engx.Context) (err error) {
+	return func(next zest.HandlerFunc) zest.HandlerFunc {
+		return func(c *zest.Context) (err error) {
 			// ============ 使用 defer + recover 捕获 panic ============
 			defer func() {
 				if r := recover(); r != nil {
@@ -73,11 +73,11 @@ func Recovery(config ...RecoveryConfig) engx.MiddlewareFunc {
 
 					// 将 panic 转换为 error 返回
 					// 这样 Logger 中间件可以记录这个 Error
-					// Engx 核心会捕获这个 Error 并调用 ErrHandler 返回 500 JSON
+					// Zest 核心会捕获这个 Error 并调用 ErrHandler 返回 500 JSON
 					// err隐式返回
-					err = engx.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("%v", r))
+					err = zest.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("%v", r))
 
-					// 如果响应头还没写入，Engx ErrHandler 会负责写入
+					// 如果响应头还没写入，Zest ErrHandler 会负责写入
 					// 如果响应已经部分写入了（c.Response().Committed），那也没办法了，只能让客户端接收截断的数据
 				}
 			}()

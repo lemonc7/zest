@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 
-	"github.com/lemonc7/engx"
+	"github.com/lemonc7/zest"
 )
 
 // RequestIDConfig RequestID 中间件配置
@@ -26,7 +26,7 @@ var DefaultRequestIDConfig = RequestIDConfig{
 }
 
 // RequestID 返回一个生成唯一请求 ID 的中间件
-func RequestID(config ...RequestIDConfig) engx.MiddlewareFunc {
+func RequestID(config ...RequestIDConfig) zest.MiddlewareFunc {
 	cfg := DefaultRequestIDConfig
 	if len(config) > 0 {
 		cfg = config[0]
@@ -38,8 +38,8 @@ func RequestID(config ...RequestIDConfig) engx.MiddlewareFunc {
 		}
 	}
 
-	return func(next engx.HandlerFunc) engx.HandlerFunc {
-		return func(c *engx.Context) error {
+	return func(next zest.HandlerFunc) zest.HandlerFunc {
+		return func(c *zest.Context) error {
 			// 1. 获取或生成 RequestID
 			rid := c.Request.Header.Get(cfg.Header)
 			if rid == "" {

@@ -6,14 +6,14 @@ import (
 	"os"
 	"time"
 
-	"github.com/lemonc7/engx"
+	"github.com/lemonc7/zest"
 )
 
 // LoggerConfig 日志中间件配置
 type LoggerConfig struct {
 	// Skip 判断是否跳过日志记录的函数
 	// 返回 true 则不记录
-	Skip func(c *engx.Context) bool
+	Skip func(c *zest.Context) bool
 	// Formatter 自定义日志格式化函数
 	// 接收 LogParam 参数，返回格式化后的字符串
 	Formatter func(param LogParam) string
@@ -68,16 +68,17 @@ func defaultLogFormatter(param LogParam) string {
 	}
 
 	// 基础日志信息
-	logStr := fmt.Sprintf("[%s] %s %s %s | %s%s%s %-7s | %13s | %8s | %s",
+	// 调整顺序：[ID] Emoji Time | Status | Method | Latency | Size | IP | Path
+	logStr := fmt.Sprintf("[%s] %s %s %s | %s%-7s%s | %10s | %8s | %-15s | %s",
 		rid,
 		getStatusEmoji(param.StatusCode),
-		param.TimeStamp.Format("2006/01/02 - 15:04:05"),
+		param.TimeStamp.Format("2006/01/02 15:04:05"),
 		statusColor+fmt.Sprintf("%3d", param.StatusCode)+reset,
 		methodColor, param.Method, reset,
-		param.Path,
 		param.Latency.String(),
 		formatSize(param.Size),
 		param.ClientIP,
+		param.Path,
 	)
 
 	// 如果有错误，追加错误信息
@@ -102,7 +103,7 @@ func formatSize(s int64) string {
 // ... (getStatusColor, getMethodColor, getStatusEmoji functions remain unchanged) ...
 
 // Logger 返回一个日志中间件，记录所有 HTTP 请求
-func Logger(config ...LoggerConfig) engx.MiddlewareFunc {
+func Logger(config ...LoggerConfig) zest.MiddlewareFunc {
 	// ... (Config logic remains unchanged) ...
 	cfg := DefaultLoggerConfig
 
@@ -121,8 +122,8 @@ func Logger(config ...LoggerConfig) engx.MiddlewareFunc {
 	}
 
 	// 返回实际的中间件函数
-	return func(next engx.HandlerFunc) engx.HandlerFunc {
-		return func(c *engx.Context) error {
+	return func(next zest.HandlerFunc) zest.HandlerFunc {
+		return func(c *zest.Context) error {
 			if cfg.Skip != nil && cfg.Skip(c) {
 				return next(c)
 			}

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lemonc7/engx"
+	"github.com/lemonc7/zest"
 )
 
 // CORSConfig CORS 配置
@@ -48,7 +48,7 @@ var DefaultCORSConfig = CORSConfig{
 }
 
 // CORS 返回 CORS 中间件
-func CORS(config ...CORSConfig) engx.MiddlewareFunc {
+func CORS(config ...CORSConfig) zest.MiddlewareFunc {
 	// 1. 初始化配置，确保都有默认值
 	cfg := DefaultCORSConfig
 	if len(config) > 0 {
@@ -88,8 +88,8 @@ func CORS(config ...CORSConfig) engx.MiddlewareFunc {
 	expose := strings.Join(cfg.ExposeHeaders, ", ")
 	maxAge := strconv.FormatInt(int64(cfg.MaxAge.Seconds()), 10)
 
-	return func(next engx.HandlerFunc) engx.HandlerFunc {
-		return func(c *engx.Context) error {
+	return func(next zest.HandlerFunc) zest.HandlerFunc {
+		return func(c *zest.Context) error {
 			origin := c.Request.Header.Get("Origin")
 			// 即使没有 Origin，也可以是同源请求，CORS 规范通常只在跨域时生效
 			// 但很多客户端库会发 Origin，保守起见如果没 Origin 直接放行

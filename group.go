@@ -1,4 +1,4 @@
-package engx
+package zest
 
 import (
 	"net/http"
@@ -9,7 +9,7 @@ import (
 type Group struct {
 	prefix      string
 	middlewares []MiddlewareFunc
-	engx        *Engx
+	zest        *Zest
 }
 
 func (g *Group) handle(method string, pattern string, handler HandlerFunc, mws ...MiddlewareFunc) {
@@ -19,7 +19,7 @@ func (g *Group) handle(method string, pattern string, handler HandlerFunc, mws .
 	// 合并分组中间件和路由中间件
 	finalMws := append(g.middlewares, mws...)
 
-	g.engx.handle(method, fullPattern, handler, finalMws...)
+	g.zest.handle(method, fullPattern, handler, finalMws...)
 }
 
 func joinPath(prefix, pattern string) string {
@@ -39,7 +39,7 @@ func (g *Group) Group(prefix string, mws ...MiddlewareFunc) *Group {
 	return &Group{
 		prefix:      g.prefix + prefix,
 		middlewares: append(g.middlewares, mws...),
-		engx:        g.engx,
+		zest:        g.zest,
 	}
 }
 
@@ -73,7 +73,7 @@ func (g *Group) DELETE(pattern string, handler HandlerFunc, mws ...MiddlewareFun
 func (g *Group) Static(prefix, root string) {
 	// 拼接分组前缀
 	fullPrefix := joinPath(g.prefix, prefix)
-	g.engx.Static(fullPrefix, root)
+	g.zest.Static(fullPrefix, root)
 }
 
 func (g *Group) OPTIONS(pattern string, handler HandlerFunc, mws ...MiddlewareFunc) {

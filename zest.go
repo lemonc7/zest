@@ -1,4 +1,4 @@
-package engx
+package zest
 
 import (
 	"log"
@@ -7,7 +7,7 @@ import (
 	"sync"
 )
 
-type Engx struct {
+type Zest struct {
 	mux         *http.ServeMux
 	ErrHandler  ErrHandlerFunc
 	middlewares []MiddlewareFunc
@@ -42,96 +42,96 @@ const (
 	MIMETextHTMLCharsetUTF8       = MIMETextHTML + "; " + charsetUTF8
 )
 
-func New() *Engx {
-	e := &Engx{
+func New() *Zest {
+	z := &Zest{
 		ErrHandler: DefaultErrHandlerFunc,
 		mux:        http.NewServeMux(),
 	}
-	e.pool.New = func() any {
+	z.pool.New = func() any {
 		return NewContext(nil, nil)
 	}
 
 	// 注册全局 404 处理，利用 Go 1.22 的特性
 	// 注册一个不带方法的模式会作为最后的兜底
-	e.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		c := e.pool.Get().(*Context)
+	z.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		c := z.pool.Get().(*Context)
 		c.reset(w, r)
-		defer e.pool.Put(c)
+		defer z.pool.Put(c)
 
 		// 通过全局错误处理器返回标准 404
-		e.ErrHandler(NewHTTPError(http.StatusNotFound, "Not Found"), c)
+		z.ErrHandler(NewHTTPError(http.StatusNotFound, "Not Found"), c)
 	})
 
-	return e
+	return z
 }
 
-func (e *Engx) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	e.mux.ServeHTTP(w, r)
+func (z *Zest) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	z.mux.ServeHTTP(w, r)
 }
 
-func (e *Engx) handle(method string, pattern string, handler HandlerFunc, mws ...MiddlewareFunc) {
+func (z *Zest) handle(method string, pattern string, handler HandlerFunc, mws ...MiddlewareFunc) {
 	route := method + " " + pattern
 
 	// 合并全局和局部路由中间件
-	finalMws := append(e.middlewares, mws...)
+	finalMws := append(z.middlewares, mws...)
 	finalHandler := use(handler, finalMws...)
 
-	e.mux.HandleFunc(route, func(w http.ResponseWriter, r *http.Request) {
-		c := e.pool.Get().(*Context)
+	z.mux.HandleFunc(route, func(w http.ResponseWriter, r *http.Request) {
+		c := z.pool.Get().(*Context)
 		c.reset(w, r)
-		defer e.pool.Put(c)
+		defer z.pool.Put(c)
 
 		if err := finalHandler(c); err != nil {
-			e.ErrHandler(err, c)
+			z.ErrHandler(err, c)
 		}
 	})
 }
 
-func (e *Engx) GET(pattern string, handler HandlerFunc, mws ...MiddlewareFunc) {
-	e.handle(http.MethodGet, pattern, handler, mws...)
+func (z *Zest) GET(pattern string, handler HandlerFunc, mws ...MiddlewareFunc) {
+	z.handle(http.MethodGet, pattern, handler, mws...)
 }
 
-func (e *Engx) POST(pattern string, handler HandlerFunc, mws ...MiddlewareFunc) {
-	e.handle(http.MethodPost, pattern, handler, mws...)
+func (z *Zest) POST(pattern string, handler HandlerFunc, mws ...MiddlewareFunc) {
+	z.handle(http.MethodPost, pattern, handler, mws...)
 }
 
-func (e *Engx) PUT(pattern string, handler HandlerFunc, mws ...MiddlewareFunc) {
-	e.handle(http.MethodPut, pattern, handler, mws...)
+func (z *Zest) PUT(pattern string, handler HandlerFunc, mws ...MiddlewareFunc) {
+	z.handle(http.MethodPut, pattern, handler, mws...)
 }
 
-func (e *Engx) PATCH(pattern string, handler HandlerFunc, mws ...MiddlewareFunc) {
-	e.handle(http.MethodPatch, pattern, handler, mws...)
+func (z *Zest) PATCH(pattern string, handler HandlerFunc, mws ...MiddlewareFunc) {
+	z.handle(http.MethodPatch, pattern, handler, mws...)
 }
 
-func (e *Engx) DELETE(pattern string, handler HandlerFunc, mws ...MiddlewareFunc) {
-	e.handle(http.MethodDelete, pattern, handler, mws...)
+func (z *Zest) DELETE(pattern string, handler HandlerFunc, mws ...MiddlewareFunc) {
+	z.handle(http.MethodDelete, pattern, handler, mws...)
 }
 
-func (e *Engx) OPTIONS(pattern string, handler HandlerFunc, mws ...MiddlewareFunc) {
-	e.handle(http.MethodOptions, pattern, handler, mws...)
+func (z *Zest) OPTIONS(pattern string, handler HandlerFunc, mws ...MiddlewareFunc) {
+	z.handle(http.MethodOptions, pattern, handler, mws...)
 }
 
-func (e *Engx) Run(addr string) error {
-	log.Printf("🚀 Engx server listening on %s\n", addr)
-	return http.ListenAndServe(addr, e)
+func (z *Zest) Run(addr string) error {
+	log.Printf("🚀 Zest server listening on %s\n", addr)
+	return http.ListenAndServe(addr, z)
 }
 
-func (e *Engx) Use(mws ...MiddlewareFunc) {
-	e.middlewares = append(e.middlewares, mws...)
+func (z *Zest) Use(mws ...MiddlewareFunc) {
+	z.middlewares = append(z.middlewares, mws...)
 }
 
 // Group 创建路由分组
-func (e *Engx) Group(prefix string, mws ...MiddlewareFunc) *Group {
+func (z *Zest) Group(prefix string, mws ...MiddlewareFunc) *Group {
 	return &Group{
 		prefix:      prefix,
 		middlewares: mws,
-		engx:        e,
+		zest:        z,
 	}
 }
 
 // Static 静态文件服务
 // 建议直接使用 middleware.Static 中间件获得更多配置项
-func (e *Engx) Static(prefix, root string) {
+func (z *Zest) Static(prefix, root string) {
 	if prefix == "" {
 		prefix = "/"
 	}
@@ -147,7 +147,7 @@ func (e *Engx) Static(prefix, root string) {
 	fileServer := http.FileServer(http.Dir(root))
 	handler := http.StripPrefix(prefix, fileServer)
 
-	e.GET(prefix+"{path...}", func(c *Context) error {
+	z.GET(prefix+"{path...}", func(c *Context) error {
 		handler.ServeHTTP(c.ResponseWriter(), c.Request)
 		return nil
 	})
