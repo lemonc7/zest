@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 
@@ -46,8 +47,10 @@ func RequestID(config ...RequestIDConfig) zest.MiddlewareFunc {
 				rid = cfg.Generator()
 			}
 
-			// 2. 注入到响应头
+			// 2. 注入到响应头与上下文，方便跨函数传递
 			c.SetHeader(cfg.Header, rid)
+			ctx := context.WithValue(c.Context(), "requestID", rid)
+			c.Request = c.Request.WithContext(ctx)
 
 			// 3. 注入到 Context 存储中，方便后续业务逻辑使用
 			c.Set("requestID", rid)
