@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/url"
@@ -17,6 +18,7 @@ type Context struct {
 	Path     string
 	Method   string
 	store    Map
+	zest     *Zest
 }
 
 // Response 包装了 http.ResponseWriter 并提供了状态和大小追踪
@@ -42,7 +44,10 @@ func (r *Response) WriteHeader(code int) {
 
 func (r *Response) Write(b []byte) (int, error) {
 	if !r.Committed {
-		r.WriteHeader(http.StatusOK)
+		if r.Status == 0 {
+			r.Status = http.StatusOK
+		}
+		r.WriteHeader(r.Status)
 	}
 	n, err := r.Writer.Write(b)
 	r.Size += int64(n)
@@ -51,7 +56,10 @@ func (r *Response) Write(b []byte) (int, error) {
 
 func (r *Response) WriteString(s string) (int, error) {
 	if !r.Committed {
-		r.WriteHeader(http.StatusOK)
+		if r.Status == 0 {
+			r.Status = http.StatusOK
+		}
+		r.WriteHeader(r.Status)
 	}
 	n, err := io.WriteString(r.Writer, s)
 	r.Size += int64(n)
@@ -83,19 +91,56 @@ func (c *Context) reset(w http.ResponseWriter, r *http.Request) {
 	if c.store != nil {
 		clear(c.store)
 	}
+	c.zest = nil
 }
 
 func (c *Context) Context() context.Context {
 	return c.Request.Context()
 }
 
-// 依赖 Go 1.22+ 的 r.PathValue
+// Error 触发全局错误处理器
+// 这允许中间件在链中处理错误，而不是等到最外层
+func (c *Context) Error(err error) {
+	if c.zest != nil && c.zest.ErrHandler != nil {
+		c.zest.ErrHandler(err, c)
+	}
+}
+
+// 路由参数，依赖 Go 1.22+ 的 r.PathValue
 func (c *Context) Param(key string) string {
 	return c.Request.PathValue(key)
 }
 
+// Params Query参数
 func (c *Context) Query(key string) string {
 	return c.Request.URL.Query().Get(key)
+}
+
+// Cookie 返回指定名称的 Cookie
+func (c *Context) Cookie(name string) (*http.Cookie, error) {
+	return c.Request.Cookie(name)
+}
+
+// SetCookie 设置 Cookie
+func (c *Context) SetCookie(cookie *http.Cookie) {
+	http.SetCookie(c.response.Writer, cookie)
+}
+
+// FormValue 返回指定名称的表单参数
+func (c *Context) FormValue(name string) string {
+	return c.Request.FormValue(name)
+}
+
+// FormFile 返回指定名称的上传文件
+func (c *Context) FormFile(name string) (*multipart.FileHeader, error) {
+	_, fh, err := c.Request.FormFile(name)
+	return fh, err
+}
+
+// MultipartForm 返回解析后的 MultipartForm
+func (c *Context) MultipartForm() (*multipart.Form, error) {
+	err := c.Request.ParseMultipartForm(32 << 20) // 默认 32MB
+	return c.Request.MultipartForm, err
 }
 
 func (c *Context) SetStatus(statusCode int) {
@@ -104,10 +149,6 @@ func (c *Context) SetStatus(statusCode int) {
 
 func (c *Context) SetHeader(key string, value string) {
 	c.response.Header().Set(key, value)
-}
-
-func (c *Context) WroteHeader() bool {
-	return c.response.Committed
 }
 
 // Response 返回 Response 对象（用于获取 Size 等信息）

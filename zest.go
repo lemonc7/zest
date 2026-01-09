@@ -33,13 +33,14 @@ const (
 
 // MIME type
 const (
-	MIMEApplicationJSON           = "application/json"
-	MIMEApplicationXML            = "application/xml"
-	MIMETextPlain                 = "text/plain"
-	MIMETextHTML                  = "text/html"
-	MIMEApplicationXMLCharsetUTF8 = MIMEApplicationXML + "; " + charsetUTF8
-	MIMETextPlainCharsetUTF8      = MIMETextPlain + "; " + charsetUTF8
-	MIMETextHTMLCharsetUTF8       = MIMETextHTML + "; " + charsetUTF8
+	MIMEApplicationJSON            = "application/json"
+	MIMEApplicationXML             = "application/xml"
+	MIMETextPlain                  = "text/plain"
+	MIMETextHTML                   = "text/html"
+	MIMEApplicationXMLCharsetUTF8  = MIMEApplicationXML + "; " + charsetUTF8
+	MIMETextPlainCharsetUTF8       = MIMETextPlain + "; " + charsetUTF8
+	MIMETextHTMLCharsetUTF8        = MIMETextHTML + "; " + charsetUTF8
+	MIMEApplicationJSONCharsetUTF8 = MIMEApplicationJSON + "; " + charsetUTF8
 )
 
 func New() *Zest {
@@ -56,6 +57,7 @@ func New() *Zest {
 	z.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		c := z.pool.Get().(*Context)
 		c.reset(w, r)
+		c.zest = z // 设置 zest 引用，让 c.Error() 可以调用全局错误处理器
 		defer z.pool.Put(c)
 
 		// 通过全局错误处理器返回标准 404
@@ -79,6 +81,7 @@ func (z *Zest) handle(method string, pattern string, handler HandlerFunc, mws ..
 	z.mux.HandleFunc(route, func(w http.ResponseWriter, r *http.Request) {
 		c := z.pool.Get().(*Context)
 		c.reset(w, r)
+		c.zest = z // 设置 zest 引用，让 c.Error() 可以调用全局错误处理器
 		defer z.pool.Put(c)
 
 		if err := finalHandler(c); err != nil {

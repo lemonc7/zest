@@ -1,6 +1,7 @@
 package zest
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 )
@@ -12,14 +13,36 @@ type HTTPError struct {
 }
 
 func DefaultErrHandlerFunc(err error, c *Context) {
-	if c.WroteHeader() {
+	// 响应已经提交，直接返回
+	if c.Response().Committed {
 		return
 	}
-	if he, ok := err.(*HTTPError); ok {
-		c.JSON(he.StatusCode, Map{"error": he.Msg})
+
+	// 如果是 HTTPError，使用其状态码和消息
+	var he *HTTPError
+	if errors.As(err, &he) {
+		// 处理嵌套的HTTPError
+		if he.Internal != nil {
+			var herr *HTTPError
+			if errors.As(he.Internal, &herr) {
+				he = herr
+			}
+		}
+	} else {
+		he = &HTTPError{
+			StatusCode: http.StatusInternalServerError,
+			Msg:        err.Error(),
+		}
+	}
+
+	// HEAD请求不需要返回响应
+	if c.Request.Method == http.MethodHead {
+		c.NoContent(he.StatusCode)
 		return
 	}
-	c.JSON(http.StatusInternalServerError, Map{"error": err.Error()})
+
+	// 返回错误响应
+	c.JSON(he.StatusCode, Map{"error": he.Msg})
 }
 
 func NewHTTPError(statusCode int, msg any) *HTTPError {
@@ -39,4 +62,8 @@ func (e *HTTPError) Error() string {
 func (e *HTTPError) SetInternal(err error) *HTTPError {
 	e.Internal = err
 	return e
+}
+
+func (e *HTTPError) Unwrap() error {
+	return e.Internal
 }

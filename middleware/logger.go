@@ -138,12 +138,18 @@ func Logger(config ...LoggerConfig) zest.MiddlewareFunc {
 			// ============ 步骤 3: 执行实际的 Handler ============
 			err := next(c)
 
-			// ============ 步骤 4: 拼接完整路径（包含查询参数）============
+			// ============ 步骤 4: 如果有错误，先调用全局错误处理器 ============
+			// 这样可以确保日志中记录的 status code 是正确的错误状态码
+			if err != nil {
+				c.Error(err)
+			}
+
+			// ============ 步骤 5: 拼接完整路径（包含查询参数）============
 			if raw != "" {
 				path = path + "?" + raw
 			}
 
-			// ============ 步骤 5: 收集日志参数 ============
+			// ============ 步骤 6: 收集日志参数 ============
 			// 尝试获取 RequestID
 			var rid string
 			if v := c.Get("requestID"); v != nil {
@@ -164,11 +170,13 @@ func Logger(config ...LoggerConfig) zest.MiddlewareFunc {
 				Error:      err,
 			}
 
-			// ============ 步骤 6: 格式化并输出日志 ============
+			// ============ 步骤 7: 格式化并输出日志 ============
 			logStr := cfg.Formatter(param)
 			fmt.Fprint(cfg.Output, logStr)
 
-			// ============ 步骤 7: 返回原始错误 ============
+			// ============ 步骤 8: 返回原始错误 ============
+			// 即使已经通过 c.Error() 处理过，仍然返回原始错误
+			// 这样上层中间件可以继续处理，而全局错误处理器会检查 Committed 避免重复写入
 			return err
 		}
 	}
