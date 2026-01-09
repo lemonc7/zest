@@ -69,13 +69,13 @@ func defaultLogFormatter(param LogParam) string {
 
 	// 基础日志信息
 	// 调整顺序：[ID] Emoji Time | Status | Method | Latency | Size | IP | Path
-	logStr := fmt.Sprintf("[%s] %s %s %s | %s%-7s%s | %10s | %8s | %-15s | %s",
+	logStr := fmt.Sprintf("[%s] %s %s %s | %s%-7s%s | %9s | %7s | %-15s | %s",
 		rid,
 		getStatusEmoji(param.StatusCode),
 		param.TimeStamp.Format("2006/01/02 15:04:05"),
 		statusColor+fmt.Sprintf("%3d", param.StatusCode)+reset,
 		methodColor, param.Method, reset,
-		param.Latency.String(),
+		formatLatency(param.Latency),
 		formatSize(param.Size),
 		param.ClientIP,
 		param.Path,
@@ -97,7 +97,21 @@ func formatSize(s int64) string {
 		size /= 1024
 		i++
 	}
-	return fmt.Sprintf("%.1f %s", size, units[i])
+	if i == 0 {
+		return fmt.Sprintf("%d B", s)
+	}
+	return fmt.Sprintf("%.2f %s", size, units[i])
+}
+
+func formatLatency(d time.Duration) string {
+	switch {
+	case d >= time.Second:
+		return fmt.Sprintf("%.2f s", float64(d)/float64(time.Second))
+	case d >= time.Millisecond:
+		return fmt.Sprintf("%.2f ms", float64(d)/float64(time.Millisecond))
+	default:
+		return fmt.Sprintf("%.2f µs", float64(d)/float64(time.Microsecond))
+	}
 }
 
 // ... (getStatusColor, getMethodColor, getStatusEmoji functions remain unchanged) ...
