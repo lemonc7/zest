@@ -1,7 +1,6 @@
 package zest
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 )
@@ -18,31 +17,31 @@ func DefaultErrHandlerFunc(err error, c *Context) {
 		return
 	}
 
-	// 如果是 HTTPError，使用其状态码和消息
-	var he *HTTPError
-	if errors.As(err, &he) {
-		// 处理嵌套的HTTPError
-		if he.Internal != nil {
-			var herr *HTTPError
-			if errors.As(he.Internal, &herr) {
-				he = herr
-			}
+	var status int
+	var errMsg string
+	if he, ok := err.(*HTTPError); ok {
+		status = he.StatusCode
+		switch msg := he.Msg.(type) {
+		case error:
+			errMsg = msg.Error()
+		case string:
+			errMsg = msg
+		default:
+			errMsg = fmt.Sprintf("%v", msg)
 		}
 	} else {
-		he = &HTTPError{
-			StatusCode: http.StatusInternalServerError,
-			Msg:        err.Error(),
-		}
+		status = http.StatusInternalServerError
+		errMsg = err.Error()
 	}
 
 	// HEAD请求不需要返回响应
 	if c.Request.Method == http.MethodHead {
-		c.NoContent(he.StatusCode)
+		c.NoContent(status)
 		return
 	}
 
 	// 返回错误响应
-	c.JSON(he.StatusCode, Map{"error": he.Msg})
+	c.JSON(status, Map{"error": errMsg})
 }
 
 func NewHTTPError(statusCode int, msg any) *HTTPError {
