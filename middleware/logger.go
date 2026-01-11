@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/lemonc7/zest"
+	_ "time/tzdata"
 )
 
 // LoggerConfig 日志中间件配置
@@ -20,6 +21,8 @@ type LoggerConfig struct {
 	// Output 日志输出目标
 	// 默认为 os.Stdout
 	Output io.Writer
+	// 时区，默认为Asia/Shanghai
+	TZ *time.Location
 }
 
 // LogParam 日志参数，包含请求的所有关键信息
@@ -39,6 +42,7 @@ type LogParam struct {
 var DefaultLoggerConfig = LoggerConfig{
 	Formatter: defaultLogFormatter,
 	Output:    os.Stdout,
+	TZ:        mustLoadLocation("Asia/Shanghai"),
 }
 
 const (
@@ -133,6 +137,9 @@ func Logger(config ...LoggerConfig) zest.MiddlewareFunc {
 		if userCfg.Output != nil {
 			cfg.Output = userCfg.Output
 		}
+		if userCfg.TZ != nil {
+			cfg.TZ = userCfg.TZ
+		}
 	}
 
 	// 返回实际的中间件函数
@@ -173,7 +180,7 @@ func Logger(config ...LoggerConfig) zest.MiddlewareFunc {
 			}
 
 			param := LogParam{
-				TimeStamp:  time.Now(),
+				TimeStamp:  time.Now().In(cfg.TZ),
 				StatusCode: c.Response().Status,
 				Latency:    time.Since(start),
 				Size:       c.Response().Size,
@@ -238,4 +245,12 @@ func getStatusEmoji(code int) string {
 	default:
 		return "🔴"
 	}
+}
+
+func mustLoadLocation(name string) *time.Location {
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		return time.FixedZone("CST", 8*3600)
+	}
+	return loc
 }
