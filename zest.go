@@ -22,27 +22,6 @@ type MiddlewareFunc func(next HandlerFunc) HandlerFunc
 
 type ErrHandlerFunc func(c *Context, err error)
 
-const (
-	charsetUTF8 = "charset=UTF-8"
-)
-
-// Header
-const (
-	HeaderContentType = "Content-Type"
-)
-
-// MIME type
-const (
-	MIMEApplicationJSON            = "application/json"
-	MIMEApplicationXML             = "application/xml"
-	MIMETextPlain                  = "text/plain"
-	MIMETextHTML                   = "text/html"
-	MIMEApplicationXMLCharsetUTF8  = MIMEApplicationXML + "; " + charsetUTF8
-	MIMETextPlainCharsetUTF8       = MIMETextPlain + "; " + charsetUTF8
-	MIMETextHTMLCharsetUTF8        = MIMETextHTML + "; " + charsetUTF8
-	MIMEApplicationJSONCharsetUTF8 = MIMEApplicationJSON + "; " + charsetUTF8
-)
-
 func New() *Zest {
 	z := &Zest{
 		ErrHandler: DefaultErrHandlerFunc,

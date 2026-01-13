@@ -21,7 +21,7 @@ type Context struct {
 	zest     *Zest
 }
 
-// Response 包装了 http.ResponseWriter 并提供了状态和大小追踪
+// Response嵌入http.ResponseWriter 并提供了状态和大小追踪
 type Response struct {
 	http.ResponseWriter
 	Status    int
@@ -34,7 +34,7 @@ func (r *Response) WriteHeader(code int) {
 		return
 	}
 	r.Status = code
-	r.WriteHeader(code)
+	r.ResponseWriter.WriteHeader(code)
 	r.Committed = true
 }
 

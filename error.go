@@ -36,11 +36,11 @@ func DefaultErrHandlerFunc(c *Context, err error) {
 	c.JSON(status, Map{"error": errMsg})
 }
 
-func NewHTTPError(statusCode int, message string) *HTTPError {
-	return &HTTPError{
-		Code:    statusCode,
-		Message: message,
+func NewHTTPError(code int, message ...string) *HTTPError {
+	if len(message) == 0 {
+		return &HTTPError{Code: code, Message: http.StatusText(code)}
 	}
+	return &HTTPError{Code: code, Message: message[0]}
 }
 
 func (e *HTTPError) Error() string {
