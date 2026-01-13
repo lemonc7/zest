@@ -114,7 +114,7 @@ func Static(config StaticConfig) zest.MiddlewareFunc {
 				// 如果后续路由也处理失败（返回了 404），且开启了 HTML5 模式，则尝试返回 index.html
 				// 这对于 SPA (单页应用) 前端路由非常重要
 				var he *zest.HTTPError
-				if config.HTML5 && (os.IsNotExist(err) || (errors.As(err, &he) && he.StatusCode == http.StatusNotFound)) {
+				if config.HTML5 && (os.IsNotExist(err) || (errors.As(err, &he) && he.Code == http.StatusNotFound)) {
 					file, err = config.Filesystem.Open(path.Join(config.Root, config.Index))
 					if err != nil {
 						// index.html 也不存在，那只能返回最初的 404 错误了

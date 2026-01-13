@@ -20,7 +20,7 @@ type HandlerFunc func(c *Context) error
 
 type MiddlewareFunc func(next HandlerFunc) HandlerFunc
 
-type ErrHandlerFunc func(err error, c *Context)
+type ErrHandlerFunc func(c *Context, err error)
 
 const (
 	charsetUTF8 = "charset=UTF-8"
@@ -61,7 +61,7 @@ func New() *Zest {
 		defer z.pool.Put(c)
 
 		// 通过全局错误处理器返回标准 404
-		z.ErrHandler(NewHTTPError(http.StatusNotFound, "Not Found"), c)
+		z.ErrHandler(c, NewHTTPError(http.StatusNotFound, "not found"))
 	})
 
 	return z
@@ -85,7 +85,7 @@ func (z *Zest) handle(method string, pattern string, handler HandlerFunc, mws ..
 		defer z.pool.Put(c)
 
 		if err := finalHandler(c); err != nil {
-			z.ErrHandler(err, c)
+			z.ErrHandler(c, err)
 		}
 	})
 }

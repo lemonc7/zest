@@ -1,13 +1,15 @@
 package middleware
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"time"
 
-	"github.com/lemonc7/zest"
 	_ "time/tzdata"
+
+	"github.com/lemonc7/zest"
 )
 
 // LoggerConfig 日志中间件配置
@@ -27,15 +29,15 @@ type LoggerConfig struct {
 
 // LogParam 日志参数，包含请求的所有关键信息
 type LogParam struct {
-	TimeStamp  time.Time     // 请求完成时间
-	StatusCode int           // HTTP 状态码
-	Latency    time.Duration // 请求耗时
-	Size       int64         // 响应大小（字节）
-	RequestID  string        // 请求唯一 ID
-	ClientIP   string        // 客户端 IP
-	Method     string        // HTTP 方法（GET/POST/etc）
-	Path       string        // 请求路径（包含 query 参数）
-	Error      error         // 如果 handler 返回了错误
+	TimeStamp time.Time     // 请求完成时间
+	Status    int           // HTTP 状态码
+	Latency   time.Duration // 请求耗时
+	Size      int64         // 响应大小（字节）
+	RequestID string        // 请求唯一 ID
+	ClientIP  string        // 客户端 IP
+	Method    string        // HTTP 方法（GET/POST/etc）
+	Path      string        // 请求路径（包含 query 参数）
+	Error     error         // 如果 handler 返回了错误
 }
 
 // DefaultLoggerConfig 默认日志配置
@@ -57,7 +59,7 @@ const (
 
 // defaultLogFormatter 默认的日志格式化函数
 func defaultLogFormatter(param LogParam) string {
-	statusColor := getStatusColor(param.StatusCode)
+	statusColor := getStatusColor(param.Status)
 	methodColor := getMethodColor(param.Method)
 
 	// 格式化 RequestID，如果为空则显示 -
@@ -75,9 +77,9 @@ func defaultLogFormatter(param LogParam) string {
 	// 调整顺序：[ID] Emoji Time | Status | Method | Latency | Size | IP | Path
 	logStr := fmt.Sprintf("[%s] %s %s %s | %s%-7s%s | %9s | %7s | %-15s | %s",
 		rid,
-		getStatusEmoji(param.StatusCode),
+		getStatusEmoji(param.Status),
 		param.TimeStamp.Format("2006/01/02 15:04:05"),
-		statusColor+fmt.Sprintf("%3d", param.StatusCode)+reset,
+		statusColor+fmt.Sprintf("%3d", param.Status)+reset,
 		methodColor, param.Method, reset,
 		formatLatency(param.Latency),
 		formatSize(param.Size),
@@ -179,16 +181,25 @@ func Logger(config ...LoggerConfig) zest.MiddlewareFunc {
 				}
 			}
 
+			// 如果有错误，尝试解包获取内部错误
+			var internalErr error
+			var he *zest.HTTPError
+			if errors.As(err, &he) && he.Unwrap() != nil {
+				internalErr = he.Unwrap()
+			} else {
+				internalErr = err
+			}
+
 			param := LogParam{
-				TimeStamp:  time.Now().In(cfg.TZ),
-				StatusCode: c.Response().Status,
-				Latency:    time.Since(start),
-				Size:       c.Response().Size,
-				RequestID:  rid,
-				ClientIP:   c.ClientIP(),
-				Method:     c.Method,
-				Path:       path,
-				Error:      err,
+				TimeStamp: time.Now().In(cfg.TZ),
+				Status:    c.Response().Status,
+				Latency:   time.Since(start),
+				Size:      c.Response().Size,
+				RequestID: rid,
+				ClientIP:  c.ClientIP(),
+				Method:    c.Method,
+				Path:      path,
+				Error:     internalErr,
 			}
 
 			// ============ 步骤 7: 格式化并输出日志 ============

@@ -1,17 +1,16 @@
 package zest
 
 import (
-	"fmt"
 	"net/http"
 )
 
 type HTTPError struct {
-	StatusCode int
-	Msg        any
-	Internal   error
+	Code    int
+	Message string
+	err     error
 }
 
-func DefaultErrHandlerFunc(err error, c *Context) {
+func DefaultErrHandlerFunc(c *Context, err error) {
 	// 响应已经提交，直接返回
 	if c.Response().Committed {
 		return
@@ -20,15 +19,8 @@ func DefaultErrHandlerFunc(err error, c *Context) {
 	var status int
 	var errMsg string
 	if he, ok := err.(*HTTPError); ok {
-		status = he.StatusCode
-		switch msg := he.Msg.(type) {
-		case error:
-			errMsg = msg.Error()
-		case string:
-			errMsg = msg
-		default:
-			errMsg = fmt.Sprintf("%v", msg)
-		}
+		status = he.Code
+		errMsg = he.Message
 	} else {
 		status = http.StatusInternalServerError
 		errMsg = err.Error()
@@ -44,25 +36,25 @@ func DefaultErrHandlerFunc(err error, c *Context) {
 	c.JSON(status, Map{"error": errMsg})
 }
 
-func NewHTTPError(statusCode int, msg any) *HTTPError {
+func NewHTTPError(statusCode int, message string) *HTTPError {
 	return &HTTPError{
-		StatusCode: statusCode,
-		Msg:        msg,
+		Code:    statusCode,
+		Message: message,
 	}
 }
 
 func (e *HTTPError) Error() string {
-	if e.Internal == nil {
-		return fmt.Sprintf("code=%d, message=%v", e.StatusCode, e.Msg)
+	if e.Message == "" {
+		return http.StatusText(e.Code)
 	}
-	return fmt.Sprintf("code=%d, message=%v, error=%v", e.StatusCode, e.Msg, e.Internal)
+	return e.Message
 }
 
-func (e *HTTPError) SetInternal(err error) *HTTPError {
-	e.Internal = err
+func (e *HTTPError) Wrap(err error) *HTTPError {
+	e.err = err
 	return e
 }
 
 func (e *HTTPError) Unwrap() error {
-	return e.Internal
+	return e.err
 }

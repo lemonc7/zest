@@ -1,6 +1,7 @@
 package zest
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -28,7 +29,8 @@ func (c *Context) Bind(schema *zog.StructSchema, dstPtr any) error {
 func (c *Context) BindBody(schema *zog.StructSchema, dstPtr any) error {
 	errs := schema.Parse(zjson.Decode(c.Request.Body), dstPtr)
 	if errs != nil {
-		return NewHTTPError(http.StatusBadRequest, zog.Issues.Flatten(errs))
+		flattened := zog.Issues.Flatten(errs)
+		return NewHTTPError(http.StatusBadRequest, flattenIssues(flattened))
 	}
 	return nil
 }
@@ -37,7 +39,19 @@ func (c *Context) BindBody(schema *zog.StructSchema, dstPtr any) error {
 func (c *Context) BindQuery(schema *zog.StructSchema, dstPtr any) error {
 	errs := schema.Parse(zhttp.Request(c.Request), dstPtr)
 	if errs != nil {
-		return NewHTTPError(http.StatusBadRequest, zog.Issues.Flatten(errs))
+		flattened := zog.Issues.Flatten(errs)
+		return NewHTTPError(http.StatusBadRequest, flattenIssues(flattened))
 	}
 	return nil
+}
+
+func flattenIssues(flattened map[string][]string) string {
+	parts := make([]string, 0, len(flattened))
+	for field, issues := range flattened {
+		if len(issues) == 0 {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s: %s", field, strings.Join(issues, ", ")))
+	}
+	return strings.Join(parts, "; ")
 }

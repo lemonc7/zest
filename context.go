@@ -23,14 +23,10 @@ type Context struct {
 
 // Response 包装了 http.ResponseWriter 并提供了状态和大小追踪
 type Response struct {
-	Writer    http.ResponseWriter
+	http.ResponseWriter
 	Status    int
 	Size      int64
 	Committed bool
-}
-
-func (r *Response) Header() http.Header {
-	return r.Writer.Header()
 }
 
 func (r *Response) WriteHeader(code int) {
@@ -38,7 +34,7 @@ func (r *Response) WriteHeader(code int) {
 		return
 	}
 	r.Status = code
-	r.Writer.WriteHeader(code)
+	r.WriteHeader(code)
 	r.Committed = true
 }
 
@@ -49,7 +45,7 @@ func (r *Response) Write(b []byte) (int, error) {
 		}
 		r.WriteHeader(r.Status)
 	}
-	n, err := r.Writer.Write(b)
+	n, err := r.ResponseWriter.Write(b)
 	r.Size += int64(n)
 	return n, err
 }
@@ -61,7 +57,7 @@ func (r *Response) WriteString(s string) (int, error) {
 		}
 		r.WriteHeader(r.Status)
 	}
-	n, err := io.WriteString(r.Writer, s)
+	n, err := io.WriteString(r.ResponseWriter, s)
 	r.Size += int64(n)
 	return n, err
 }
@@ -73,7 +69,7 @@ func NewContext(w http.ResponseWriter, r *http.Request) *Context {
 }
 
 func (c *Context) reset(w http.ResponseWriter, r *http.Request) {
-	c.response.Writer = w
+	c.response.ResponseWriter = w
 	c.response.Status = http.StatusOK
 	c.response.Size = 0
 	c.response.Committed = false
@@ -102,7 +98,7 @@ func (c *Context) Context() context.Context {
 // 这允许中间件在链中处理错误，而不是等到最外层
 func (c *Context) Error(err error) {
 	if c.zest != nil && c.zest.ErrHandler != nil {
-		c.zest.ErrHandler(err, c)
+		c.zest.ErrHandler(c, err)
 	}
 }
 
@@ -123,7 +119,7 @@ func (c *Context) Cookie(name string) (*http.Cookie, error) {
 
 // SetCookie 设置 Cookie
 func (c *Context) SetCookie(cookie *http.Cookie) {
-	http.SetCookie(c.response.Writer, cookie)
+	http.SetCookie(c.response.ResponseWriter, cookie)
 }
 
 // FormValue 返回指定名称的表单参数
@@ -158,7 +154,7 @@ func (c *Context) Response() *Response {
 
 // Writer 返回底层的 ResponseWriter
 func (c *Context) ResponseWriter() http.ResponseWriter {
-	return c.response.Writer
+	return c.response.ResponseWriter
 }
 
 func (c *Context) JSON(status int, data any) error {
@@ -241,7 +237,7 @@ func (c *Context) File(filepath string) {
 	// 2. 处理 Last-Modified 和 If-Modified-Since (支持浏览器缓存！)
 	// 3. 支持 Range 请求 (视频拖动播放、断点续传)
 	// 4. 安全地读取文件流写入 Response
-	http.ServeFile(c.response.Writer, c.Request, filepath)
+	http.ServeFile(c.response.ResponseWriter, c.Request, filepath)
 }
 
 // Attachment 用于提供文件下载，并指定下载文件名
@@ -251,5 +247,5 @@ func (c *Context) Attachment(file string, name string) {
 	// filename=... 指定了用户保存时默认显示的文件名
 	c.SetHeader("Content-Disposition", `attachment; filename*=UTF-8''`+url.PathEscape(name))
 	// 同样复用 ServeFile 来处理文件流传输
-	http.ServeFile(c.response.Writer, c.Request, file)
+	http.ServeFile(c.response.ResponseWriter, c.Request, file)
 }
