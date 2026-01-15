@@ -22,7 +22,7 @@ func (c *Context) Bind(dst Validator) error {
 	if err := bindPathValues(c.Request, dst); err != nil {
 		return err
 	}
-
+	
 	method := c.Request.Method
 	if method == http.MethodGet ||
 		method == http.MethodDelete ||
@@ -63,8 +63,7 @@ func bindPathValues(req *http.Request, dst Validator) error {
 	}
 
 	if err := bindData(dst, params, "param", nil); err != nil {
-		return NewHTTPError(http.StatusBadRequest, err.Error()).
-			Wrap(err)
+		return NewHTTPError(http.StatusBadRequest).Wrap(err)
 	}
 	return nil
 }
@@ -72,8 +71,7 @@ func bindPathValues(req *http.Request, dst Validator) error {
 // tag: query
 func bindQueryParams(req *http.Request, dst Validator) error {
 	if err := bindData(dst, req.URL.Query(), "query", nil); err != nil {
-		return NewHTTPError(http.StatusBadRequest, err.Error()).
-			Wrap(err)
+		return NewHTTPError(http.StatusBadRequest).Wrap(err)
 	}
 	return nil
 }
