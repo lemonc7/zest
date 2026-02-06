@@ -1,6 +1,7 @@
 package zest
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"strings"
@@ -22,6 +23,8 @@ type MiddlewareFunc func(next HandlerFunc) HandlerFunc
 
 type ErrHandlerFunc func(c *Context, err error)
 
+var contextKey = struct{}{}
+
 func New() *Zest {
 	z := &Zest{
 		ErrHandler: DefaultErrHandlerFunc,
@@ -34,10 +37,8 @@ func New() *Zest {
 	// 注册全局 404 处理，利用 Go 1.22 的特性
 	// 注册一个不带方法的模式会作为最后的兜底
 	z.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		c := z.pool.Get().(*Context)
-		c.reset(w, r)
-		c.zest = z // 设置 zest 引用，让 c.Error() 可以调用全局错误处理器
-		defer z.pool.Put(c)
+		c := r.Context().Value(contextKey).(*Context)
+		c.sync(w, r)
 
 		// 通过全局错误处理器返回标准 404
 		z.ErrHandler(c, NewHTTPError(http.StatusNotFound, "not found"))
@@ -47,21 +48,39 @@ func New() *Zest {
 }
 
 func (z *Zest) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	z.mux.ServeHTTP(w, r)
+	c := z.pool.Get().(*Context)
+	c.reset(w, r)
+	c.zest = z
+	defer z.pool.Put(c)
+
+	// 将自定义的 Context 存入上下文中
+	r = r.WithContext(context.WithValue(r.Context(), contextKey, c))
+	c.Request = r
+
+	handle := func(ctx *Context) error {
+		z.mux.ServeHTTP(ctx.ResponseWriter(), ctx.Request)
+		return nil
+	}
+
+	// 将全局中间件应用到最外层
+	handle = use(handle, z.middlewares...)
+
+	// 错误处理
+	if err := handle(c); err != nil {
+		z.ErrHandler(c, err)
+	}
 }
 
 func (z *Zest) handle(method string, pattern string, handler HandlerFunc, mws ...MiddlewareFunc) {
 	route := method + " " + pattern
 
-	// 合并全局和局部路由中间件
-	finalMws := append(z.middlewares, mws...)
-	finalHandler := use(handler, finalMws...)
+	// 处理局部路由中间件
+	finalHandler := use(handler, mws...)
 
 	z.mux.HandleFunc(route, func(w http.ResponseWriter, r *http.Request) {
-		c := z.pool.Get().(*Context)
-		c.reset(w, r)
-		c.zest = z // 设置 zest 引用，让 c.Error() 可以调用全局错误处理器
-		defer z.pool.Put(c)
+		// 此时能进这里的请求，已经经过了 ServeHTTP 里的全局中间件
+		c := r.Context().Value(contextKey).(*Context)
+		c.sync(w, r)
 
 		if err := finalHandler(c); err != nil {
 			z.ErrHandler(c, err)

@@ -90,6 +90,15 @@ func (c *Context) reset(w http.ResponseWriter, r *http.Request) {
 	c.zest = nil
 }
 
+func (c *Context) sync(w http.ResponseWriter, r *http.Request) {
+	c.Request = r
+	c.response.ResponseWriter = w
+	if r != nil {
+		c.Path = r.URL.Path
+		c.Method = r.Method
+	}
+}
+
 func (c *Context) Context() context.Context {
 	return c.Request.Context()
 }
