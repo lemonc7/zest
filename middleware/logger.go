@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	_ "time/tzdata"
@@ -59,40 +61,68 @@ const (
 
 // defaultLogFormatter 默认的日志格式化函数
 func defaultLogFormatter(param LogParam) string {
-	statusColor := getStatusColor(param.Status)
-	methodColor := getMethodColor(param.Method)
+	var b strings.Builder
+	b.Grow(128) // 预分配 buffer，避免由于扩容产生的多次内存分配
 
 	// 格式化 RequestID，如果为空则显示 -
 	rid := param.RequestID
 	if rid == "" {
 		rid = "-"
-	} else {
-		// 截取前 8 位显示，避免太长
-		if len(rid) > 8 {
-			rid = rid[:8]
-		}
+	} else if len(rid) > 8 {
+		rid = rid[:8]
 	}
 
-	// 基础日志信息
-	// 调整顺序：[ID] Emoji Time | Status | Method | Latency | Size | IP | Path
-	logStr := fmt.Sprintf("[%s] %s %s %s | %s%-7s%s | %9s | %7s | %-15s | %s",
-		rid,
-		getStatusEmoji(param.Status),
-		param.TimeStamp.Format("2006/01/02 15:04:05"),
-		statusColor+fmt.Sprintf("%3d", param.Status)+reset,
-		methodColor, param.Method, reset,
-		formatLatency(param.Latency),
-		formatSize(param.Size),
-		param.ClientIP,
-		param.Path,
-	)
+	// [ID]
+	b.WriteString("[")
+	b.WriteString(rid)
+	b.WriteString("] ")
 
-	// 如果有错误，追加错误信息
+	// Emoji
+	b.WriteString(getStatusEmoji(param.Status))
+	b.WriteString(" ")
+
+	// Time
+	b.WriteString(param.TimeStamp.Format("2006/01/02 15:04:05"))
+	b.WriteString(" | ")
+
+	// Status with Color
+	b.WriteString(getStatusColor(param.Status))
+	b.WriteString(strconv.Itoa(param.Status)) // 使用 Itoa 替代 fmt.Sprintf("%3d")
+	b.WriteString(reset)
+	b.WriteString(" | ")
+
+	// Method with Color
+	b.WriteString(getMethodColor(param.Method))
+	b.WriteString(param.Method)
+	b.WriteString(reset)
+	b.WriteString(" | ")
+
+	// Latency
+	b.WriteString(formatLatency(param.Latency))
+	b.WriteString(" | ")
+
+	// Size
+	b.WriteString(formatSize(param.Size))
+	b.WriteString(" | ")
+
+	// IP
+	b.WriteString(param.ClientIP)
+	b.WriteString(" | ")
+
+	// Path
+	b.WriteString(param.Path)
+
+	// Error
 	if param.Error != nil {
-		logStr += fmt.Sprintf(" | %sError: %s%s", red, param.Error.Error(), reset)
+		b.WriteString(" | ")
+		b.WriteString(red)
+		b.WriteString("Error: ")
+		b.WriteString(param.Error.Error())
+		b.WriteString(reset)
 	}
 
-	return logStr + "\n"
+	b.WriteString("\n")
+	return b.String()
 }
 
 func formatSize(s int64) string {
@@ -119,8 +149,6 @@ func formatLatency(d time.Duration) string {
 		return fmt.Sprintf("%.2f µs", float64(d)/float64(time.Microsecond))
 	}
 }
-
-// ... (getStatusColor, getMethodColor, getStatusEmoji functions remain unchanged) ...
 
 // Logger 返回一个日志中间件，记录所有 HTTP 请求
 func Logger(config ...LoggerConfig) zest.MiddlewareFunc {

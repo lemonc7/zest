@@ -217,8 +217,11 @@ func (c *Context) ClientIP() string {
 	// 这是最标准的代理透传 Header，格式通常是：ClientIP, Proxy1, Proxy2...
 	clientIP := c.Request.Header.Get("X-Forwarded-For")
 	// 只取第一个 IP（最左边的），因为那才是原始客户端的 IP
-	// strings.TrimSpace 防止有空格干扰
-	clientIP = strings.TrimSpace(strings.Split(clientIP, ",")[0])
+	// 使用 strings.Cut 避免 strings.Split 产生的切片分配
+	if ip, _, found := strings.Cut(clientIP, ","); found {
+		clientIP = ip
+	}
+	clientIP = strings.TrimSpace(clientIP)
 
 	// 2. 如果没取到，检查 X-Real-Ip
 	// 这是一个非标准 Header，但在 Nginx 中非常常用

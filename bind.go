@@ -22,7 +22,7 @@ func (c *Context) Bind(dst Validator) error {
 	if err := bindPathValues(c.Request, dst); err != nil {
 		return err
 	}
-	
+
 	method := c.Request.Method
 	if method == http.MethodGet ||
 		method == http.MethodDelete ||
@@ -51,6 +51,9 @@ var (
 	multipartFileHeaderPointerType      = reflect.TypeFor[*multipart.FileHeader]()
 	multipartFileHeaderSliceType        = reflect.TypeFor[[]multipart.FileHeader]()
 	multipartFileHeaderPointerSliceType = reflect.TypeFor[[]*multipart.FileHeader]()
+
+	// 预编译路径参数正则表达式，匹配 {paramName} 格式
+	pathParamRegex = regexp.MustCompile(`\{([a-zA-Z0-9_]+)\}`)
 )
 
 // tag: param
@@ -116,8 +119,7 @@ func bindBody(req *http.Request, dst Validator) (err error) {
 }
 
 func getPathParamNames(pattern string) []string {
-	re := regexp.MustCompile(`\{([a-zA-Z0-9_]+)\}`)
-	matches := re.FindAllStringSubmatch(pattern, -1)
+	matches := pathParamRegex.FindAllStringSubmatch(pattern, -1)
 	var params []string
 	for _, match := range matches {
 		params = append(params, match[1])
