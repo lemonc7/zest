@@ -25,7 +25,7 @@ type Context struct {
 type Response struct {
 	http.ResponseWriter
 	Status    int
-	Size      int64
+	Size      int
 	Committed bool
 }
 
@@ -46,7 +46,7 @@ func (r *Response) Write(b []byte) (int, error) {
 		r.WriteHeader(r.Status)
 	}
 	n, err := r.ResponseWriter.Write(b)
-	r.Size += int64(n)
+	r.Size += n
 	return n, err
 }
 
@@ -58,7 +58,7 @@ func (r *Response) WriteString(s string) (int, error) {
 		r.WriteHeader(r.Status)
 	}
 	n, err := io.WriteString(r.ResponseWriter, s)
-	r.Size += int64(n)
+	r.Size += n
 	return n, err
 }
 

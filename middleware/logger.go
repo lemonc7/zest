@@ -34,7 +34,7 @@ type LogParam struct {
 	TimeStamp time.Time     // 请求完成时间
 	Status    int           // HTTP 状态码
 	Latency   time.Duration // 请求耗时
-	Size      int64         // 响应大小（字节）
+	Size      int           // 响应大小（字节）
 	RequestID string        // 请求唯一 ID
 	ClientIP  string        // 客户端 IP
 	Method    string        // HTTP 方法（GET/POST/etc）
@@ -64,18 +64,12 @@ func defaultLogFormatter(param LogParam) string {
 	var b strings.Builder
 	b.Grow(128) // 预分配 buffer，避免由于扩容产生的多次内存分配
 
-	// 格式化 RequestID，如果为空则显示 -
-	rid := param.RequestID
-	if rid == "" {
-		rid = "-"
-	} else if len(rid) > 8 {
-		rid = rid[:8]
-	}
-
 	// [ID]
-	b.WriteString("[")
-	b.WriteString(rid)
-	b.WriteString("] ")
+	if param.RequestID != "" {
+		b.WriteString("[")
+		b.WriteString(param.RequestID)
+		b.WriteString("] ")
+	}
 
 	// Emoji
 	b.WriteString(getStatusEmoji(param.Status))
@@ -94,6 +88,9 @@ func defaultLogFormatter(param LogParam) string {
 	// Method with Color
 	b.WriteString(getMethodColor(param.Method))
 	b.WriteString(param.Method)
+	for range 7 - len(param.Method) {
+		b.WriteByte(' ')
+	}
 	b.WriteString(reset)
 	b.WriteString(" | ")
 
@@ -121,32 +118,31 @@ func defaultLogFormatter(param LogParam) string {
 		b.WriteString(reset)
 	}
 
-	b.WriteString("\n")
+	b.WriteByte('\n')
 	return b.String()
 }
 
-func formatSize(s int64) string {
-	units := []string{"B", "KB", "MB", "GB", "TB", "PB"}
-	size := float64(s)
+func formatSize(size int) string {
+	val, units := float64(size), []string{"B ", "KB", "MB", "GB", "TB", "PB"}
 	i := 0
-	for size >= 1024 && i < len(units)-1 {
-		size /= 1024
+	for val >= 1024 && i < len(units)-1 {
+		val /= 1024
 		i++
 	}
 	if i == 0 {
-		return fmt.Sprintf("%d B", s)
+		return fmt.Sprintf("%7d B ", size)
 	}
-	return fmt.Sprintf("%.2f %s", size, units[i])
+	return fmt.Sprintf("%7.2f %s", val, units[i])
 }
 
 func formatLatency(d time.Duration) string {
 	switch {
 	case d >= time.Second:
-		return fmt.Sprintf("%.2f s", float64(d)/float64(time.Second))
+		return fmt.Sprintf("%7.2f s ", d.Seconds())
 	case d >= time.Millisecond:
-		return fmt.Sprintf("%.2f ms", float64(d)/float64(time.Millisecond))
+		return fmt.Sprintf("%7.2f ms", float64(d)*1e-6)
 	default:
-		return fmt.Sprintf("%.2f µs", float64(d)/float64(time.Microsecond))
+		return fmt.Sprintf("%7.2f µs", float64(d)*1e-3)
 	}
 }
 
@@ -211,8 +207,7 @@ func Logger(config ...LoggerConfig) zest.MiddlewareFunc {
 
 			// 如果有错误，尝试解包获取内部错误
 			var internalErr error
-			var he *zest.HTTPError
-			if errors.As(err, &he) && he.Unwrap() != nil {
+			if he, ok := errors.AsType[*zest.HTTPError](err); ok && he.Unwrap() != nil {
 				internalErr = he.Unwrap()
 			} else {
 				internalErr = err

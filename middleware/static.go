@@ -180,7 +180,7 @@ func listDir(t *template.Template, name string, dir http.File, c *zest.Context) 
 		}{
 			Name:  f.Name(),
 			IsDir: f.IsDir(),
-			Size:  formatSize(f.Size()),
+			Size:  formatSize(int(f.Size())),
 		})
 	}
 	return t.Execute(c.Response(), data)
