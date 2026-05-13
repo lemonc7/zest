@@ -1,0 +1,22 @@
+name: Testing
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+      
+jobs:
+  testing:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.26'
+
+      - name: Run Testing
+        run: go test -v ./...
