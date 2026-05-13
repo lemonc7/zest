@@ -112,6 +112,10 @@ func (z *Zest) OPTIONS(pattern string, handler HandlerFunc, mws ...MiddlewareFun
 	z.handle(http.MethodOptions, pattern, handler, mws...)
 }
 
+func (z *Zest) HEAD(pattern string, handler HandlerFunc, mws ...MiddlewareFunc) {
+	z.handle(http.MethodHead, pattern, handler, mws...)
+}
+
 func (z *Zest) Run(addr string) error {
 	log.Printf("🚀 Zest server listening on %s\n", addr)
 	return http.ListenAndServe(addr, z)
@@ -148,10 +152,12 @@ func (z *Zest) Static(prefix, root string) {
 	fileServer := http.FileServer(http.Dir(root))
 	handler := http.StripPrefix(prefix, fileServer)
 
-	z.GET(prefix+"{path...}", func(c *Context) error {
+	serveStatic := func(c *Context) error {
 		handler.ServeHTTP(c.ResponseWriter(), c.Request)
 		return nil
-	})
+	}
+	z.GET(prefix+"{path...}", serveStatic)
+	z.HEAD(prefix+"{path...}", serveStatic)
 }
 
 func use(handler HandlerFunc, mws ...MiddlewareFunc) HandlerFunc {

@@ -69,12 +69,13 @@ func NewContext(w http.ResponseWriter, r *http.Request) *Context {
 }
 
 func (c *Context) reset(w http.ResponseWriter, r *http.Request) {
+	c.Request = r
+
 	c.response.ResponseWriter = w
 	c.response.Status = http.StatusOK
 	c.response.Size = 0
 	c.response.Committed = false
 
-	c.Request = r
 	if r != nil {
 		c.Path = r.URL.Path
 		c.Method = r.Method
@@ -83,13 +84,12 @@ func (c *Context) reset(w http.ResponseWriter, r *http.Request) {
 		c.Method = ""
 	}
 
-	// 只在 store 不为空时进行清理
-	if c.store != nil {
-		clear(c.store)
-	}
+	c.store = nil
+
 	c.zest = nil
 }
 
+// sync 在路由匹配后更新 context 的请求/响应引用。
 func (c *Context) sync(w http.ResponseWriter, r *http.Request) {
 	c.Request = r
 	c.response.ResponseWriter = w
@@ -197,8 +197,8 @@ func (c *Context) Get(key string) any {
 	return c.store[key]
 }
 
-func (c *Context) NoContent(status int) error {
-	c.SetStatus(status)
+func (c *Context) NoContent() error {
+	c.SetStatus(http.StatusNoContent)
 	return nil
 }
 

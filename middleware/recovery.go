@@ -42,10 +42,10 @@ func Recovery(config ...RecoveryConfig) zest.MiddlewareFunc {
 
 	return func(next zest.HandlerFunc) zest.HandlerFunc {
 		return func(c *zest.Context) (err error) {
-			// ============ 使用 defer + recover 捕获 panic ============
+			// 使用 defer + recover 捕获 panic 
 			defer func() {
 				if r := recover(); r != nil {
-					// ========== 步骤 1: 检查是否是网络连接中断 ==========
+					// 检查是否是网络连接中断 
 					var brokenPipe bool
 					if ne, ok := r.(netError); ok {
 						errMsg := strings.ToLower(ne.Error())
@@ -55,7 +55,7 @@ func Recovery(config ...RecoveryConfig) zest.MiddlewareFunc {
 						}
 					}
 
-					// ========== 步骤 2: 获取堆栈信息 ==========
+					// 获取堆栈信息
 					// 如果不是 Broken Pipe，或者是 Broken Pipe 但我们也想看一点信息（通常 BrokenPipe 不需要看堆栈）
 					// 这里保持逻辑：BrokenPipe 不打印堆栈
 					if !brokenPipe {
@@ -64,7 +64,7 @@ func Recovery(config ...RecoveryConfig) zest.MiddlewareFunc {
 						cfg.LogFunc("[Recovery] panic recovered:\n%v\n%s", r, trace)
 					}
 
-					// ========== 步骤 3: 构造错误返回 ==========
+					// 构造错误返回
 					if brokenPipe {
 						// 如果是网络断开，返回 nil 终止后续处理，也不需要写响应
 						err = nil
@@ -82,7 +82,7 @@ func Recovery(config ...RecoveryConfig) zest.MiddlewareFunc {
 				}
 			}()
 
-			// ============ 执行实际的 Handler ============
+			// 执行实际的 Handler
 			return next(c)
 		}
 	}

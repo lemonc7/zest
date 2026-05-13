@@ -146,7 +146,7 @@ func CORS(config ...CORSConfig) zest.MiddlewareFunc {
 				if cfg.MaxAge > 0 {
 					c.SetHeader("Access-Control-Max-Age", maxAge)
 				}
-				return c.NoContent(http.StatusNoContent)
+				return c.NoContent()
 			}
 
 			return next(c)

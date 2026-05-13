@@ -52,8 +52,8 @@ var (
 	multipartFileHeaderSliceType        = reflect.TypeFor[[]multipart.FileHeader]()
 	multipartFileHeaderPointerSliceType = reflect.TypeFor[[]*multipart.FileHeader]()
 
-	// 预编译路径参数正则表达式，匹配 {paramName} 格式
-	pathParamRegex = regexp.MustCompile(`\{([a-zA-Z0-9_]+)\}`)
+	// 预编译路径参数正则表达式，匹配 {paramName} 和 {paramName...} 格式
+	pathParamRegex = regexp.MustCompile(`\{([a-zA-Z0-9_]+)(?:\.\.\.)?\}`)
 )
 
 // tag: param

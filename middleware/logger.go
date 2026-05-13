@@ -26,7 +26,7 @@ type LoggerConfig struct {
 	// 默认为 os.Stdout
 	Output io.Writer
 	// 时区，默认为Asia/Shanghai
-	TZ *time.Location
+	TZ string
 }
 
 // LogParam 日志参数，包含请求的所有关键信息
@@ -46,7 +46,7 @@ type LogParam struct {
 var DefaultLoggerConfig = LoggerConfig{
 	Formatter: defaultLogFormatter,
 	Output:    os.Stdout,
-	TZ:        mustLoadLocation("Asia/Shanghai"),
+	TZ:        "Asia/Shanghai",
 }
 
 const (
@@ -163,10 +163,13 @@ func Logger(config ...LoggerConfig) zest.MiddlewareFunc {
 		if userCfg.Output != nil {
 			cfg.Output = userCfg.Output
 		}
-		if userCfg.TZ != nil {
+		if userCfg.TZ != "" {
 			cfg.TZ = userCfg.TZ
 		}
 	}
+
+	// 预加载时区
+	loc := mustLoadLocation(cfg.TZ)
 
 	// 返回实际的中间件函数
 	return func(next zest.HandlerFunc) zest.HandlerFunc {
@@ -175,28 +178,28 @@ func Logger(config ...LoggerConfig) zest.MiddlewareFunc {
 				return next(c)
 			}
 
-			// ============ 步骤 1: 记录开始时间 ============
+			// 记录开始时间
 			start := time.Now()
 
-			// ============ 步骤 2: 保存原始路径和查询参数 ============
+			// 保存原始路径和查询参数
 			path := c.Request.URL.Path
 			raw := c.Request.URL.RawQuery
 
-			// ============ 步骤 3: 执行实际的 Handler ============
+			// 执行实际的 Handler
 			err := next(c)
 
-			// ============ 步骤 4: 如果有错误，先调用全局错误处理器 ============
+			// 如果有错误，先调用全局错误处理器
 			// 这样可以确保日志中记录的 status code 是正确的错误状态码
 			if err != nil {
 				c.Error(err)
 			}
 
-			// ============ 步骤 5: 拼接完整路径（包含查询参数）============
+			// 拼接完整路径（包含查询参数）
 			if raw != "" {
 				path = path + "?" + raw
 			}
 
-			// ============ 步骤 6: 收集日志参数 ============
+			// 收集日志参数
 			// 尝试获取 RequestID
 			var rid string
 			if v := c.Get("requestID"); v != nil {
@@ -214,7 +217,7 @@ func Logger(config ...LoggerConfig) zest.MiddlewareFunc {
 			}
 
 			param := LogParam{
-				TimeStamp: time.Now().In(cfg.TZ),
+				TimeStamp: time.Now().In(loc),
 				Status:    c.Response().Status,
 				Latency:   time.Since(start),
 				Size:      c.Response().Size,
@@ -225,11 +228,11 @@ func Logger(config ...LoggerConfig) zest.MiddlewareFunc {
 				Error:     internalErr,
 			}
 
-			// ============ 步骤 7: 格式化并输出日志 ============
+			// 格式化并输出日志 
 			logStr := cfg.Formatter(param)
 			fmt.Fprint(cfg.Output, logStr)
 
-			// ============ 步骤 8: 返回原始错误 ============
+			// 返回原始错误 
 			// 即使已经通过 c.Error() 处理过，仍然返回原始错误
 			// 这样上层中间件可以继续处理，而全局错误处理器会检查 Committed 避免重复写入
 			return err

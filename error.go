@@ -28,7 +28,7 @@ func DefaultErrHandlerFunc(c *Context, err error) {
 
 	// HEAD请求不需要返回响应
 	if c.Request.Method == http.MethodHead {
-		c.NoContent(status)
+		c.NoContent()
 		return
 	}
 

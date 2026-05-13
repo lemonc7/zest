@@ -37,7 +37,7 @@ func joinPath(prefix, pattern string) string {
 // Group 创建嵌套分组
 func (g *Group) Group(prefix string, mws ...MiddlewareFunc) *Group {
 	return &Group{
-		prefix:      g.prefix + prefix,
+		prefix:      joinPath(g.prefix, prefix),
 		middlewares: append(g.middlewares, mws...),
 		zest:        g.zest,
 	}
