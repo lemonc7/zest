@@ -53,7 +53,7 @@ func TestNew(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("expected JSON response body, got error: %v", err)
 	}
-	if body["error"] != "not found" {
+	if body["error"] != "Not Found" {
 		t.Errorf("expected error message 'not found', got %v", body["error"])
 	}
 }
@@ -439,7 +439,7 @@ func TestZest_404(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("expected JSON response body, got error: %v", err)
 	}
-	if body["error"] != "not found" {
+	if body["error"] != "Not Found" {
 		t.Errorf("expected error message 'not found', got %v", body["error"])
 	}
 }
