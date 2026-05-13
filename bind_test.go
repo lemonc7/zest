@@ -11,82 +11,51 @@ import (
 	"testing"
 )
 
-// --- Test helper types that implement Validator ---
+// --- Test helper types ---
 
 type pathBind struct {
 	ID int `param:"id"`
 }
 
-func (p *pathBind) Validate() error { return nil }
-
 type queryBind struct {
 	Name string `query:"name"`
 }
-
-func (q *queryBind) Validate() error { return nil }
 
 type jsonBind struct {
 	Name string `json:"name"`
 }
 
-func (j *jsonBind) Validate() error { return nil }
-
 type formBind struct {
 	Name string `form:"name"`
-}
-
-func (f *formBind) Validate() error { return nil }
-
-type failingBind struct {
-	Name string `query:"name"`
-}
-
-func (f *failingBind) Validate() error {
-	return errors.New("validation failed")
 }
 
 type intBind struct {
 	Value int `query:"value"`
 }
 
-func (i *intBind) Validate() error { return nil }
-
 type floatBind struct {
 	Value float64 `query:"value"`
 }
-
-func (f *floatBind) Validate() error { return nil }
 
 type boolBind struct {
 	Flag bool `query:"flag"`
 }
 
-func (b *boolBind) Validate() error { return nil }
-
 type caseBind struct {
 	Name string `query:"Name"`
 }
 
-func (c *caseBind) Validate() error { return nil }
-
-// MapValidator is a named map type that implements Validator,
-// allowing map[string]string destinations to be used with Bind.
+// Named map type for map[string]string destinations with Bind.
 type MapValidator map[string]string
-
-func (m MapValidator) Validate() error { return nil }
 
 type combinedBind struct {
 	ID   int    `param:"id"`
 	Name string `query:"name"`
 }
 
-func (c *combinedBind) Validate() error { return nil }
-
 type postBodyBind struct {
 	Name string `json:"name"`
 }
-
-func (b *postBodyBind) Validate() error { return nil }
 
 // --- Helper to create a Context with an httptest recorder ---
 
@@ -181,31 +150,7 @@ func TestBindForm(t *testing.T) {
 }
 
 // ============================================================
-// 5. TestBindValidation
-// ============================================================
-
-func TestBindValidation(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/?name=test", nil)
-
-	c := newTestContext(req)
-	dst := &failingBind{}
-
-	err := c.Bind(dst)
-	if err == nil {
-		t.Fatal("expected error from validation, got nil")
-	}
-
-	var httpErr *HTTPError
-	if !errors.As(err, &httpErr) {
-		t.Fatalf("expected *HTTPError, got %T: %v", err, err)
-	}
-	if httpErr.Code != http.StatusUnprocessableEntity {
-		t.Errorf("expected status %d, got %d", http.StatusUnprocessableEntity, httpErr.Code)
-	}
-}
-
-// ============================================================
-// 6. TestGetPathParamNames
+// 5. TestGetPathParamNames
 // ============================================================
 
 func TestGetPathParamNames(t *testing.T) {
@@ -464,8 +409,6 @@ type xmlBind struct {
 	Name string `xml:"name"`
 }
 
-func (x *xmlBind) Validate() error { return nil }
-
 func TestBindXML(t *testing.T) {
 	xmlBody := `<xmlBind><name>xmlvalue</name></xmlBind>`
 	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(xmlBody))
@@ -533,8 +476,6 @@ type fileBind struct {
 	Avatar *multipart.FileHeader `form:"avatar"`
 }
 
-func (f *fileBind) Validate() error { return nil }
-
 func TestBindMultipartFile(t *testing.T) {
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -563,8 +504,6 @@ func TestBindMultipartFile(t *testing.T) {
 type filesBind struct {
 	Files []*multipart.FileHeader `form:"files"`
 }
-
-func (f *filesBind) Validate() error { return nil }
 
 func TestBindMultipartFiles(t *testing.T) {
 	body := &bytes.Buffer{}
@@ -604,8 +543,6 @@ type uintBind struct {
 	Count uint `query:"count"`
 }
 
-func (u *uintBind) Validate() error { return nil }
-
 func TestBindUint(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/?count=42", nil)
 
@@ -624,8 +561,6 @@ func TestBindUint(t *testing.T) {
 type uint8Bind struct {
 	Val uint8 `query:"val"`
 }
-
-func (u *uint8Bind) Validate() error { return nil }
 
 func TestBindUint8(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/?val=255", nil)
@@ -650,8 +585,6 @@ type formOnlyBind struct {
 	Field string `form:"field"`
 }
 
-func (f *formOnlyBind) Validate() error { return nil }
-
 func TestBindFormMultipartContentType(t *testing.T) {
 	// simulate multipart/form-data content-type to hit the formParams multipart branch
 	body := &bytes.Buffer{}
@@ -671,5 +604,81 @@ func TestBindFormMultipartContentType(t *testing.T) {
 	}
 	if dst.Field != "multipart_form_value" {
 		t.Errorf("expected Field='multipart_form_value', got %q", dst.Field)
+	}
+}
+
+// ============================================================
+// StructValidator integration tests
+// ============================================================
+
+type mockStructValidator struct {
+	err error
+}
+
+func (m *mockStructValidator) ValidateStruct(v any) error {
+	return m.err
+}
+
+// structWithValidateTag is a bind target with struct tags for validation.
+type structWithValidateTag struct {
+	Name string `query:"name"`
+}
+
+func TestBind_StructValidatorOnly(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/?name=test", nil)
+	c := newTestContext(req)
+	c.zest = &Zest{StructValidator: &mockStructValidator{}}
+
+	dst := &structWithValidateTag{}
+	err := c.Bind(dst)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if dst.Name != "test" {
+		t.Errorf("expected Name='test', got %q", dst.Name)
+	}
+}
+
+func TestBind_StructValidatorReturnsError(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/?name=test", nil)
+	c := newTestContext(req)
+	c.zest = &Zest{StructValidator: &mockStructValidator{err: errors.New("tag validation failed")}}
+
+	dst := &structWithValidateTag{}
+	err := c.Bind(dst)
+	if err == nil {
+		t.Fatal("expected error from StructValidator, got nil")
+	}
+	var httpErr *HTTPError
+	if !errors.As(err, &httpErr) {
+		t.Fatalf("expected *HTTPError, got %T", err)
+	}
+	if httpErr.Code != http.StatusUnprocessableEntity {
+		t.Errorf("expected 422, got %d", httpErr.Code)
+	}
+}
+
+func TestBind_NoValidatorNoError(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/?name=test", nil)
+	c := newTestContext(req)
+
+	dst := &structWithValidateTag{}
+	err := c.Bind(dst)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if dst.Name != "test" {
+		t.Errorf("expected Name='test', got %q", dst.Name)
+	}
+}
+
+func TestBind_NilZestDoesNotPanic(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/?name=test", nil)
+	c := newTestContext(req)
+	c.zest = nil
+
+	dst := &structWithValidateTag{}
+	if err := c.Bind(dst); err != nil {
+		t.Fatalf("unexpected error with nil zest: %v", err)
 	}
 }

@@ -9,10 +9,11 @@ import (
 )
 
 type Zest struct {
-	mux         *http.ServeMux
-	ErrHandler  ErrHandlerFunc
-	middlewares []MiddlewareFunc
-	pool        sync.Pool
+	mux             *http.ServeMux
+	ErrHandler      ErrHandlerFunc
+	StructValidator StructValidator
+	middlewares     []MiddlewareFunc
+	pool            sync.Pool
 }
 
 type Map map[string]any

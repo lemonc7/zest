@@ -14,11 +14,15 @@ import (
 	"strings"
 )
 
-type Validator interface {
-	Validate() error
+// StructValidator is the interface for framework-level struct tag validation.
+// Implementations can use libraries like go-playground/validator.
+type StructValidator interface {
+	ValidateStruct(any) error
 }
 
-func (c *Context) Bind(dst Validator) error {
+// Bind binds request data (path values, query params, body) to the destination struct.
+// After binding, it runs framework-level validation via StructValidator (if set on Zest instance).
+func (c *Context) Bind(dst any) error {
 	if err := bindPathValues(c.Request, dst); err != nil {
 		return err
 	}
@@ -36,8 +40,10 @@ func (c *Context) Bind(dst Validator) error {
 		return err
 	}
 
-	if err := dst.Validate(); err != nil {
-		return NewHTTPError(http.StatusUnprocessableEntity, err.Error())
+	if c.zest != nil && c.zest.StructValidator != nil {
+		if err := c.zest.StructValidator.ValidateStruct(dst); err != nil {
+			return NewHTTPError(http.StatusUnprocessableEntity, err.Error())
+		}
 	}
 
 	return nil
@@ -57,7 +63,7 @@ var (
 )
 
 // tag: param
-func bindPathValues(req *http.Request, dst Validator) error {
+func bindPathValues(req *http.Request, dst any) error {
 	names := getPathParamNames(req.Pattern)
 	params := map[string][]string{}
 	for _, name := range names {
@@ -72,7 +78,7 @@ func bindPathValues(req *http.Request, dst Validator) error {
 }
 
 // tag: query
-func bindQueryParams(req *http.Request, dst Validator) error {
+func bindQueryParams(req *http.Request, dst any) error {
 	if err := bindData(dst, req.URL.Query(), "query", nil); err != nil {
 		return NewHTTPError(http.StatusBadRequest).Wrap(err)
 	}
@@ -80,7 +86,7 @@ func bindQueryParams(req *http.Request, dst Validator) error {
 }
 
 // tag: json
-func bindBody(req *http.Request, dst Validator) (err error) {
+func bindBody(req *http.Request, dst any) (err error) {
 	if req.ContentLength == 0 {
 		return
 	}
