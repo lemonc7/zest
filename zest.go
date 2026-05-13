@@ -40,8 +40,13 @@ func New() *Zest {
 		c := r.Context().Value(contextKey).(*Context)
 		c.sync(w, r)
 
-		// 通过全局错误处理器返回标准 404
-		z.ErrHandler(c, NewHTTPError(http.StatusNotFound, "not found"))
+		h := use(func(c *Context) error {
+			return NewHTTPError(http.StatusNotFound)
+		}, z.middlewares...)
+
+		if err := h(c); err != nil {
+			c.Error(err)
+		}
 	})
 
 	return z
@@ -57,33 +62,21 @@ func (z *Zest) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = r.WithContext(context.WithValue(r.Context(), contextKey, c))
 	c.Request = r
 
-	handle := func(ctx *Context) error {
-		z.mux.ServeHTTP(ctx.ResponseWriter(), ctx.Request)
-		return nil
-	}
-
-	// 将全局中间件应用到最外层
-	handle = use(handle, z.middlewares...)
-
-	// 错误处理
-	if err := handle(c); err != nil {
-		z.ErrHandler(c, err)
-	}
+	z.mux.ServeHTTP(c.ResponseWriter(), c.Request)
 }
 
 func (z *Zest) handle(method string, pattern string, handler HandlerFunc, mws ...MiddlewareFunc) {
 	route := method + " " + pattern
 
-	// 处理局部路由中间件
 	finalHandler := use(handler, mws...)
 
 	z.mux.HandleFunc(route, func(w http.ResponseWriter, r *http.Request) {
-		// 此时能进这里的请求，已经经过了 ServeHTTP 里的全局中间件
 		c := r.Context().Value(contextKey).(*Context)
 		c.sync(w, r)
 
-		if err := finalHandler(c); err != nil {
-			z.ErrHandler(c, err)
+		h := use(finalHandler, z.middlewares...)
+		if err := h(c); err != nil {
+			c.Error(err)
 		}
 	})
 }
