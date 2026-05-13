@@ -2,7 +2,6 @@ package zest
 
 import (
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,14 +13,6 @@ import (
 // testRequest is a helper that creates an HTTP request and serves it through the Zest instance.
 func testRequest(z *Zest, method, path string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, nil)
-	rec := httptest.NewRecorder()
-	z.ServeHTTP(rec, req)
-	return rec
-}
-
-// testRequestBody creates a request with a body.
-func testRequestBody(z *Zest, method, path string, body io.Reader) *httptest.ResponseRecorder {
-	req := httptest.NewRequest(method, path, body)
 	rec := httptest.NewRecorder()
 	z.ServeHTTP(rec, req)
 	return rec
