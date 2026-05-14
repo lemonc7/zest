@@ -14,10 +14,10 @@ import (
 	"strings"
 )
 
-// StructValidator is the interface for framework-level struct tag validation.
+// Validator is the interface for framework-level struct tag validation.
 // Implementations can use libraries like go-playground/validator.
-type StructValidator interface {
-	ValidateStruct(any) error
+type Validator interface {
+	Validate(any) error
 }
 
 // Bind binds request data (path values, query params, body) to the destination struct.
@@ -40,8 +40,8 @@ func (c *Context) Bind(dst any) error {
 		return err
 	}
 
-	if c.zest != nil && c.zest.StructValidator != nil {
-		if err := c.zest.StructValidator.ValidateStruct(dst); err != nil {
+	if c.zest != nil && c.zest.Validator != nil {
+		if err := c.zest.Validator.Validate(dst); err != nil {
 			return NewHTTPError(http.StatusUnprocessableEntity, err.Error())
 		}
 	}

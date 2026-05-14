@@ -611,11 +611,11 @@ func TestBindFormMultipartContentType(t *testing.T) {
 // StructValidator integration tests
 // ============================================================
 
-type mockStructValidator struct {
+type mockValidator struct {
 	err error
 }
 
-func (m *mockStructValidator) ValidateStruct(v any) error {
+func (m *mockValidator) Validate(v any) error {
 	return m.err
 }
 
@@ -627,7 +627,7 @@ type structWithValidateTag struct {
 func TestBind_StructValidatorOnly(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/?name=test", nil)
 	c := newTestContext(req)
-	c.zest = &Zest{StructValidator: &mockStructValidator{}}
+	c.zest = &Zest{Validator: &mockValidator{}}
 
 	dst := &structWithValidateTag{}
 	err := c.Bind(dst)
@@ -642,7 +642,7 @@ func TestBind_StructValidatorOnly(t *testing.T) {
 func TestBind_StructValidatorReturnsError(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/?name=test", nil)
 	c := newTestContext(req)
-	c.zest = &Zest{StructValidator: &mockStructValidator{err: errors.New("tag validation failed")}}
+	c.zest = &Zest{Validator: &mockValidator{err: errors.New("tag validation failed")}}
 
 	dst := &structWithValidateTag{}
 	err := c.Bind(dst)
